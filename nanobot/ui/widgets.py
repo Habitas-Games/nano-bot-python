@@ -116,3 +116,58 @@ def draw_text(surface: "pygame.Surface", text: str, pos: tuple[int, int],
               size: int = 14, color: tuple[int, int, int] = (215, 218, 228)) -> None:
     font = get_font(size)
     surface.blit(font.render(text, True, color), pos)
+
+
+class Slider:
+    """A horizontal scrubber — click or drag anywhere on the track to jump
+    straight to that value, matching the Godot HUD's "Jump to turn" slider
+    (HSlider) rather than only stepping one increment per click."""
+
+    def __init__(self, rect: tuple[int, int, int, int], min_value: int, max_value: int,
+                 value: int = 0, on_change: Callable[[int], None] | None = None):
+        self.rect = pygame.Rect(rect)
+        self.min_value = min_value
+        self.max_value = max_value
+        self.value = value
+        self.on_change = on_change
+        self._dragging = False
+
+    def set_range(self, min_value: int, max_value: int) -> None:
+        self.min_value = min_value
+        self.max_value = max(max_value, min_value)
+        self.value = max(self.min_value, min(self.max_value, self.value))
+
+    def set_value(self, value: int) -> None:
+        self.value = max(self.min_value, min(self.max_value, value))
+
+    def _value_at(self, x: int) -> int:
+        span = max(1, self.max_value - self.min_value)
+        t = max(0.0, min(1.0, (x - self.rect.x) / self.rect.width))
+        return self.min_value + round(t * span)
+
+    def handle_event(self, event: "pygame.event.Event") -> bool:
+        if self.max_value <= self.min_value:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos):
+            self._dragging = True
+            self.value = self._value_at(event.pos[0])
+            if self.on_change:
+                self.on_change(self.value)
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._dragging = False
+        elif event.type == pygame.MOUSEMOTION and self._dragging:
+            self.value = self._value_at(event.pos[0])
+            if self.on_change:
+                self.on_change(self.value)
+            return True
+        return False
+
+    def draw(self, surface: "pygame.Surface") -> None:
+        track = pygame.Rect(self.rect.x, self.rect.centery - 2, self.rect.width, 4)
+        pygame.draw.rect(surface, (20, 22, 30), track, border_radius=2)
+        span = max(1, self.max_value - self.min_value)
+        t = (self.value - self.min_value) / span
+        handle_x = self.rect.x + int(t * self.rect.width)
+        pygame.draw.circle(surface, (120, 200, 140), (handle_x, self.rect.centery), 6)
+        pygame.draw.circle(surface, (20, 22, 30), (handle_x, self.rect.centery), 6, width=1)

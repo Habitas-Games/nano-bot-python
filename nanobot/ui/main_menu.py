@@ -45,7 +45,22 @@ class MainMenu:
         self._match_result: dict | None = None  # set by the thread: {"path": str} or {"error": str}
         self._match_started_at = 0.0
 
+        self.modal: dict | None = None
+        # What "Run Match" will actually use — previously not settable at
+        # all, hardcoded to glob()'s first map and first two strategies.
+        self.selected_map: str | None = None
+        self.selected_p0: str | None = None
+        self.selected_p1: str | None = None
+        self._init_default_selection()
+
         self._build_buttons()
+
+    def _init_default_selection(self) -> None:
+        maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+        strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
+        self.selected_map = maps[0] if maps else None
+        self.selected_p0 = strategies[0] if strategies else None
+        self.selected_p1 = strategies[1] if len(strategies) > 1 else (strategies[0] if strategies else None)
 
     def resize(self, screen_size: tuple[int, int]) -> None:
         self.screen_size = screen_size
@@ -54,7 +69,15 @@ class MainMenu:
     def _build_buttons(self) -> None:
         cx = self.screen_size[0] // 2
         w, h, gap = 260, 44, 14
-        y = self.screen_size[1] // 2 - 120
+        sel_h, sel_gap = 32, 6
+        y = self.screen_size[1] // 2 - 178
+
+        self.btn_select_map = Button((cx - w // 2, y, w, sel_h), "", on_click=self._open_map_picker)
+        y += sel_h + sel_gap
+        self.btn_select_p0 = Button((cx - w // 2, y, w, sel_h), "", on_click=lambda: self._open_strategy_picker("p0"))
+        y += sel_h + sel_gap
+        self.btn_select_p1 = Button((cx - w // 2, y, w, sel_h), "", on_click=lambda: self._open_strategy_picker("p1"))
+        y += sel_h + gap
 
         self.btn_run = Button((cx - w // 2, y, w, h), "Run Match", on_click=self._run_match)
         y += h + gap
@@ -64,13 +87,68 @@ class MainMenu:
         y += h + gap
         self.btn_quit = Button((cx - w // 2, y, w, h), "Quit", on_click=self._quit)
 
-        self.buttons = [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
+        self.selector_buttons = [self.btn_select_map, self.btn_select_p0, self.btn_select_p1]
+        self.buttons = self.selector_buttons + [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
+        self._refresh_selector_labels()
+
+    def _refresh_selector_labels(self) -> None:
+        def name(path: str | None) -> str:
+            return os.path.basename(path).rsplit(".", 1)[0] if path else "(none found)"
+        self.btn_select_map.text = f"Map: {name(self.selected_map)}"
+        self.btn_select_p0.text = f"Player 1 Strategy: {name(self.selected_p0)}"
+        self.btn_select_p1.text = f"Player 2 Strategy: {name(self.selected_p1)}"
 
     def handle_event(self, event: "pygame.event.Event") -> None:
+        if self.modal is not None:
+            self._handle_modal_event(event)
+            return
         if self.running_match:
             return  # ignore input while a match is in flight — nothing to click into
         for btn in self.buttons:
             btn.handle_event(event)
+
+    # --- map/strategy picker modal ---
+    # Same dict-driven modal pattern as the map editor's load_picker
+    # (map_editor.py) — re-globs fresh each time it's opened so a map or
+    # strategy saved after the menu first loaded still shows up.
+
+    def _open_map_picker(self) -> None:
+        files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+        if not files:
+            self.message = "No maps found in maps/"
+            return
+        self.modal = {"type": "picker", "title": "Select map", "files": files, "slot": "map"}
+
+    def _open_strategy_picker(self, slot: str) -> None:
+        files = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
+        if not files:
+            self.message = "No strategies found in strategies/"
+            return
+        label = "Player 1" if slot == "p0" else "Player 2"
+        self.modal = {"type": "picker", "title": f"Select {label} strategy", "files": files, "slot": slot}
+
+    def _handle_modal_event(self, event: "pygame.event.Event") -> None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.modal = None
+            return
+        if event.type != pygame.MOUSEBUTTONDOWN:
+            return
+        for i, rect in enumerate(getattr(self, "_modal_file_rects", [])):
+            if rect.collidepoint(event.pos):
+                self._apply_picker_choice(self.modal["slot"], self.modal["files"][i])
+                self.modal = None
+                return
+        if not getattr(self, "_modal_box_rect", pygame.Rect(0, 0, 0, 0)).collidepoint(event.pos):
+            self.modal = None
+
+    def _apply_picker_choice(self, slot: str, path: str) -> None:
+        if slot == "map":
+            self.selected_map = path
+        elif slot == "p0":
+            self.selected_p0 = path
+        elif slot == "p1":
+            self.selected_p1 = path
+        self._refresh_selector_labels()
 
     def update(self, dt: float) -> None:
         if not self.running_match:
@@ -101,6 +179,34 @@ class MainMenu:
             self._draw_running_indicator(surface, cx)
         elif self.message:
             draw_text(surface, self.message, (cx - 200, self.screen_size[1] - 60), size=13, color=(220, 200, 120))
+
+        if self.modal is not None:
+            self._draw_modal(surface)
+
+    def _draw_modal(self, surface: "pygame.Surface") -> None:
+        overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        surface.blit(overlay, (0, 0))
+
+        m = self.modal
+        box_w = 360
+        box_h = 56 + 28 * len(m["files"])
+        box_x = (self.screen_size[0] - box_w) // 2
+        box_y = (self.screen_size[1] - box_h) // 2
+        box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+        self._modal_box_rect = box_rect
+        pygame.draw.rect(surface, (45, 48, 58), box_rect, border_radius=6)
+        pygame.draw.rect(surface, (90, 95, 110), box_rect, width=2, border_radius=6)
+
+        draw_text(surface, m["title"], (box_x + 16, box_y + 14), size=14)
+        rects = []
+        for i, path in enumerate(m["files"]):
+            r = pygame.Rect(box_x + 12, box_y + 44 + i * 28, box_w - 24, 24)
+            hovered = r.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
+            draw_text(surface, os.path.basename(path), (r.x + 8, r.y + 4), size=12)
+            rects.append(r)
+        self._modal_file_rects = rects
 
     def _draw_running_indicator(self, surface: "pygame.Surface", cx: int) -> None:
         elapsed = time.monotonic() - self._match_started_at
@@ -141,10 +247,16 @@ class MainMenu:
         if self.running_match:
             return
 
-        strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
-        maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-        if len(strategies) < 2 or not maps:
-            self.message = "Need >= 2 strategies and >= 1 map to run a match"
+        # Selections are set once at startup (first map, first two distinct
+        # strategies found) and can be changed via the picker buttons above
+        # — re-check the files still exist rather than trusting a path
+        # picked earlier in the session is still valid (a map/strategy file
+        # could have been deleted, or the menu could have started with none
+        # available at all).
+        missing = [p for p in (self.selected_map, self.selected_p0, self.selected_p1)
+                   if p is None or not os.path.exists(p)]
+        if missing:
+            self.message = "Select a map and both strategies before running a match"
             return
 
         self.running_match = True
@@ -152,7 +264,7 @@ class MainMenu:
         self._match_result = None
         self._match_started_at = time.monotonic()
         self._match_thread = threading.Thread(
-            target=self._match_worker, args=(strategies[:2], maps[0]), daemon=True)
+            target=self._match_worker, args=([self.selected_p0, self.selected_p1], self.selected_map), daemon=True)
         self._match_thread.start()
 
     def _match_worker(self, strategy_paths: list[str], map_path: str) -> None:

@@ -15,7 +15,7 @@ from nanobot.core.map_data import Density, MapData, StreamDir
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.match_log import MatchLog
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, draw_text, get_font
+from nanobot.ui.widgets import Button, Slider, draw_text, get_font
 
 CELL_SIZE = 14
 SIDEBAR_WIDTH = 260
@@ -141,8 +141,49 @@ class PlaybackViewer:
         self.btn_speed_up = Button((x, y, size, size), "", icon=icons.speed_up_icon(22), on_click=lambda: self._change_speed(1))
         self.btn_back = Button((self.screen_size[0] - 130, y, 120, size), "Back to Menu",
                                 icon=icons.back_arrow_icon(16), on_click=self._back)
+
+        self._compute_hud_layout()
+        sidebar_x = self.screen_size[0] - SIDEBAR_WIDTH
+        max_frame = len(self.log.frames) - 1 if self.log and self.log.frames else 0
+        self.turn_slider = Slider((sidebar_x + 12, self._hud_layout["slider"], SIDEBAR_WIDTH - 24, 20),
+                                   0, max_frame, self.current_frame, on_change=self._jump_to)
+
         self.controls = [self.btn_play, self.btn_step_back, self.btn_step_fwd,
-                          self.btn_speed_down, self.btn_speed_up, self.btn_back]
+                          self.btn_speed_down, self.btn_speed_up, self.btn_back, self.turn_slider]
+
+    def _compute_hud_layout(self) -> None:
+        # Every HUD section's y-position computed once here, rather than by
+        # hand inside _draw_hud — the map editor sidebar had the same
+        # hand-computed-offsets-drift-out-of-sync risk earlier in this
+        # project's history, fixed there the same way.
+        num_rows = len(self.log.player_strategies) if self.log else 0
+        y = CONTROL_BAR_HEIGHT + 12
+        layout = {"map_info": y}
+        y += 22
+        layout["turn"] = y
+        y += 22
+        layout["slider"] = y
+        y += 26
+        layout["scores_header"] = y
+        y += 20
+        layout["score_rows"] = y
+        y += num_rows * 20
+        layout["winner"] = y  # reserved unconditionally so the legend below never shifts
+        y += 22
+        layout["legend_header"] = y
+        y += 20
+        layout["legend_rows"] = y
+        self._hud_layout = layout
+
+    def _jump_to(self, frame_index: int) -> None:
+        # Matches playback_scene.gd's jump_to: relocate and reset the
+        # per-frame accumulator, but don't touch self.playing — scrubbing
+        # the slider while playing keeps playing from the new position,
+        # scrubbing while paused stays paused.
+        if self.log is None or not self.log.frames:
+            return
+        self.current_frame = max(0, min(len(self.log.frames) - 1, frame_index))
+        self._accum = 0.0
 
     def _back(self) -> None:
         if self.on_back_to_menu:
@@ -252,6 +293,9 @@ class PlaybackViewer:
         self._draw_bots(surface, frame)
         surface.set_clip(prev_clip)
 
+        # Keep the slider's handle in sync regardless of what moved
+        # current_frame (play/step/speed all bypass _jump_to).
+        self.turn_slider.set_value(self.current_frame)
         self._draw_hud(surface, frame)
         self._draw_inspector(surface, frame)
 
@@ -419,17 +463,34 @@ class PlaybackViewer:
             self.bot_sprites[bot_type] = _load_bot_sprite(bot_type)
         return self.bot_sprites[bot_type]
 
+    # Same legend the Godot HUD shows (hud.gd's legend_entries) — texture
+    # + label pairs, reusing the textures already loaded for the canvas
+    # itself rather than loading separate copies.
+    def _legend_entries(self) -> list[tuple["pygame.Surface | None", str]]:
+        return [
+            (self.terrain_textures.get(Density.LOW), "Low density (2 turns)"),
+            (self.terrain_textures.get(Density.MEDIUM), "Medium density (3 turns)"),
+            (self.terrain_textures.get(Density.HIGH), "High density (4 turns)"),
+            (self.terrain_textures.get(Density.BONE), "Bone (impassable)"),
+            (self.stream_h_texture, "Bloodstream"),
+            (self.habitas_neutral_texture, "Habitas Point"),
+            (self.azn_texture, "AZN Node"),
+        ]
+
     def _draw_hud(self, surface: "pygame.Surface", frame: dict) -> None:
         x = self.screen_size[0] - SIDEBAR_WIDTH
         rect = pygame.Rect(x, CONTROL_BAR_HEIGHT, SIDEBAR_WIDTH, self.screen_size[1] - CONTROL_BAR_HEIGHT)
         pygame.draw.rect(surface, (32, 32, 38), rect)
         pygame.draw.line(surface, (12, 12, 16), (x, CONTROL_BAR_HEIGHT), (x, self.screen_size[1]), 2)
 
-        y = CONTROL_BAR_HEIGHT + 12
-        draw_text(surface, f"Turn {frame['turn']} / {self.log.total_turns}", (x + 12, y), size=15, color=(235, 235, 235))
-        y += 28
-        draw_text(surface, "Scores", (x + 12, y), size=12, color=(160, 165, 180))
-        y += 20
+        L = self._hud_layout
+        draw_text(surface, f"Map: {self.log.map_name}", (x + 12, L["map_info"]), size=12, color=(160, 165, 180))
+        draw_text(surface, f"Turn {frame['turn']} / {self.log.total_turns}", (x + 12, L["turn"]), size=15, color=(235, 235, 235))
+
+        self.turn_slider.draw(surface)
+
+        draw_text(surface, "Scores", (x + 12, L["scores_header"]), size=12, color=(160, 165, 180))
+        y = L["score_rows"]
         for pid_str, score in sorted(frame["scores"].items(), key=lambda kv: int(kv[0])):
             pid = int(pid_str)
             color = PLAYER_COLORS[pid % len(PLAYER_COLORS)]
@@ -439,20 +500,35 @@ class PlaybackViewer:
             y += 20
 
         if self.current_frame == len(self.log.frames) - 1:
-            y += 8
-            draw_text(surface, f"Winner: Player {self.log.winner_id}", (x + 12, y), size=14, color=(120, 230, 140))
+            draw_text(surface, f"Winner: Player {self.log.winner_id}", (x + 12, L["winner"]), size=14, color=(120, 230, 140))
+
+        draw_text(surface, "Map Legend", (x + 12, L["legend_header"]), size=12, color=(160, 165, 180))
+        y = L["legend_rows"]
+        for tex, label in self._legend_entries():
+            if tex:
+                surface.blit(self._scaled(tex, 12), (x + 12, y + 1))
+            draw_text(surface, label, (x + 30, y), size=10, color=(185, 188, 196))
+            y += 16
 
     def _draw_inspector(self, surface: "pygame.Surface", frame: dict) -> None:
-        if self.selected_bot_id is None:
-            return
-        bot = next((b for b in frame["bots"] if b["id"] == self.selected_bot_id), None)
-        if bot is None:
-            return
+        # Always visible (placeholder text when nothing's selected) rather
+        # than only appearing once a bot is clicked — matches the Godot
+        # HUD's persistent "Bot Inspector" panel, and means a first-time
+        # user can see right away that bots are clickable at all.
         x = self.screen_size[0] - SIDEBAR_WIDTH
-        y = self.screen_size[1] - 140
-        rect = pygame.Rect(x + 8, y, SIDEBAR_WIDTH - 16, 130)
+        y = self.screen_size[1] - 158
+        rect = pygame.Rect(x + 8, y, SIDEBAR_WIDTH - 16, 150)
         pygame.draw.rect(surface, (45, 48, 58), rect, border_radius=4)
         pygame.draw.rect(surface, (90, 95, 110), rect, width=1, border_radius=4)
+        draw_text(surface, "Bot Inspector", (rect.x + 8, rect.y + 6), size=12, color=(160, 165, 180))
+
+        bot = None
+        if self.selected_bot_id is not None:
+            bot = next((b for b in frame["bots"] if b["id"] == self.selected_bot_id), None)
+        if bot is None:
+            draw_text(surface, "Click a bot on the map to inspect it.", (rect.x + 8, rect.y + 28), size=11, color=(150, 150, 150))
+            return
+
         lines = [
             f"#{bot['id']} {bot['type']}",
             f"Owner: Player {bot['owner']}",
@@ -463,4 +539,4 @@ class PlaybackViewer:
             f"Alive: {bot['alive']}",
         ]
         for i, line in enumerate(lines):
-            draw_text(surface, line, (rect.x + 8, rect.y + 8 + i * 17), size=12)
+            draw_text(surface, line, (rect.x + 8, rect.y + 28 + i * 15), size=11)
