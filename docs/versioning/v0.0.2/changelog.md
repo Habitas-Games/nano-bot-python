@@ -172,3 +172,11 @@ Closely related to round 7's fix: `MatchLog.save_to_file()` and `Leaderboard.sav
 - `TournamentRunner._run_one_match()` now logs (without aborting the match — its results are still valid and worth keeping) if the replay write fails, rather than masking it silently.
 
 6 new tests across `tests/test_match_log.py` and `tests/test_leaderboard.py` (covering both the success and `OSError` return-value cases), 273 total. Full regression sweep green, including a real tournament and headless match through the actual CLI, confirming the normal (non-failing) success-reporting path is unchanged.
+
+---
+
+## Follow-up round 9: CLI argument parsing — `--seed` crashed on a typo
+
+`headless_runner.py`'s `--seed` argument was converted with a bare `int(args.get("seed", 0))`. **Confirmed directly:** `python run_headless.py --map ... --seed notanumber` crashed with an unhandled `ValueError` and a raw Python traceback instead of a clean CLI error — exactly the input a participant typo'ing a command would hit. Fixed by catching the conversion and reporting it the same way every other "fail loudly but cleanly on bad input" fix in this version does. Checked `run_tournament.py` for the same pattern — it takes no numeric CLI arguments at all, so there was nothing equivalent to fix there.
+
+`headless_runner.py` had zero unit test coverage before this round (`tests/test_headless_runner.py` is new — argument parsing, missing/nonexistent map, the new seed-validation fix, and one real successful run through `_execute()` confirming the happy path is unaffected). 7 new tests, 280 total. Full regression sweep green.

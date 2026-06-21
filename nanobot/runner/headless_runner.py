@@ -43,7 +43,16 @@ def _execute(args: dict) -> int:
         if key in args:
             strategies.append(args[key])
 
-    seed_val = int(args.get("seed", 0))
+    try:
+        seed_val = int(args.get("seed", 0))
+    except ValueError:
+        # Confirmed reachable: a typo'd --seed used to crash with a raw
+        # ValueError traceback instead of a clean CLI error message, the
+        # same class of issue as every other "fail loudly but cleanly on
+        # bad input" fix in this version — just at the argument-parsing
+        # layer instead of a file-loading one.
+        print(f"HeadlessRunner: --seed must be an integer, got {args['seed']!r}")
+        return 1
     sim = SimulationCore(map_data, strategies, seed_val)
 
     print(f"HeadlessRunner: starting match — map: {map_data.map_name}, "
