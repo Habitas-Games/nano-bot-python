@@ -18,7 +18,7 @@ class PanTool(EditorTool):
         e.scroll_y = max(0, min(e.scroll_y - rel[1], max_y))
 
     def get_status_text(self) -> str:
-        return "Tool: Pan ✋ | Click + drag to move map"
+        return "Tool: Pan | Click + drag to move map"
 
     def get_cursor(self) -> int:
         return pygame.SYSTEM_CURSOR_SIZEALL

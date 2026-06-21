@@ -264,19 +264,28 @@ class PlaybackViewer:
             r = self._cell_rect(bot["pos"][0], bot["pos"][1])
             sprite = self._get_sprite(bot["type"])
             color = PLAYER_COLORS[bot["owner"] % len(PLAYER_COLORS)]
+
+            # Team color is a solid ring around the bot, not a tint blended into
+            # the sprite's own colors or a tiny corner dot — both were tested
+            # against red (LOW-density) terrain and were nearly invisible for
+            # the red player. A ring stays legible against any background and
+            # at any zoom level, and doesn't compete with the sprite's own
+            # colors so the bot-type icon underneath stays readable.
+            pygame.draw.circle(surface, color, r.center, r.width // 2, width=3)
+
             if sprite:
-                scaled = pygame.transform.smoothscale(sprite, (r.width, r.height))
-                tinted = scaled.copy()
-                tinted.fill((*color, 90), special_flags=pygame.BLEND_RGBA_MULT)
-                surface.blit(scaled, r.topleft)
-                pygame.draw.circle(surface, color, (r.right - 3, r.top + 3), 4)
+                # Shrink the icon slightly so the team ring isn't drawn over it.
+                inset = max(2, r.width // 6)
+                icon_rect = r.inflate(-inset * 2, -inset * 2)
+                scaled = pygame.transform.smoothscale(sprite, icon_rect.size)
+                surface.blit(scaled, icon_rect.topleft)
             else:
-                pygame.draw.circle(surface, color, r.center, r.width // 2 - 1)
                 font = get_font(9)
-                label = font.render(bot["type"][4:6], True, (0, 0, 0))
+                label = font.render(bot["type"][4:6], True, color)
                 surface.blit(label, label.get_rect(center=r.center))
+
             if bot["id"] == self.selected_bot_id:
-                pygame.draw.circle(surface, (255, 255, 255), r.center, r.width // 2 + 2, width=2)
+                pygame.draw.circle(surface, (255, 255, 255), r.center, r.width // 2 + 3, width=2)
 
     def _get_sprite(self, bot_type: str) -> "pygame.Surface | None":
         if bot_type not in self.bot_sprites:

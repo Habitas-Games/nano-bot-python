@@ -26,4 +26,4 @@ class DeleteTool(EditorTool):
         self.editor.brush_cursor_pos = (-1, -1)
 
     def get_status_text(self) -> str:
-        return "Tool: Delete 🗑 | Click + drag to erase terrain, streams, elements"
+        return "Tool: Delete | Click + drag to erase terrain, streams, elements"

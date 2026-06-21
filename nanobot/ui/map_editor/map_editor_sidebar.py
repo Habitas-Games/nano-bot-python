@@ -30,6 +30,8 @@ class MapEditorSidebar:
 
         self.terrain_group = ButtonGroup()
         self.stream_group = ButtonGroup()
+        self.tool_group = ButtonGroup()  # Habitas/AZN/Zone/Pan/Edit/Delete — mutually exclusive, tracks active_tool_name
+        self._tool_buttons_by_name: dict[str, Button] = {}
         self.undo_btn: Button | None = None
         self._action_buttons: list[Button] = []
 
@@ -50,12 +52,19 @@ class MapEditorSidebar:
         y += 18
         size = 48
         densities = [Density.LOW, Density.MEDIUM, Density.HIGH, Density.BONE]
-        labels = {Density.LOW: "LOW\n2t", Density.MEDIUM: "MED\n3t", Density.HIGH: "HIGH\n4t", Density.BONE: "BONE\nX"}
+        labels = {Density.LOW: "LOW", Density.MEDIUM: "MED", Density.HIGH: "HIGH", Density.BONE: "BONE"}
+        tooltips = {
+            Density.LOW: "Low density — 2 turns/step",
+            Density.MEDIUM: "Medium density — 3 turns/step",
+            Density.HIGH: "High density — 4 turns/step",
+            Density.BONE: "Bone — impassable",
+        }
         for i, d in enumerate(densities):
             bx = x + (i % 4) * (size + 2)
             by = y + (i // 4) * (size + 2)
-            btn = Button((bx, by, size, size), labels[d].split("\n")[0],
-                         on_click=lambda d=d: self._select_density(d), pressed=(d == Density.LOW))
+            btn = Button((bx, by, size, size), labels[d],
+                         on_click=lambda d=d: self._select_density(d), pressed=(d == Density.LOW),
+                         tooltip=tooltips[d])
             self.terrain_group.add(btn)
         y += size + 10
 
@@ -63,10 +72,12 @@ class MapEditorSidebar:
         y += 18
         dirs = [StreamDir.NORTH, StreamDir.SOUTH, StreamDir.EAST, StreamDir.WEST]
         dir_labels = {StreamDir.NORTH: "^", StreamDir.SOUTH: "v", StreamDir.EAST: ">", StreamDir.WEST: "<"}
+        dir_names = {StreamDir.NORTH: "North", StreamDir.SOUTH: "South", StreamDir.EAST: "East", StreamDir.WEST: "West"}
         for i, sd in enumerate(dirs):
             bx = x + i * (size + 2)
             btn = Button((bx, y, size, size), dir_labels[sd],
-                         on_click=lambda sd=sd: self._select_stream(sd), pressed=(sd == StreamDir.NORTH))
+                         on_click=lambda sd=sd: self._select_stream(sd), pressed=(sd == StreamDir.NORTH),
+                         tooltip=f"Stream direction: {dir_names[sd]}")
             self.stream_group.add(btn)
         y += size + 10
 
@@ -75,7 +86,8 @@ class MapEditorSidebar:
         for label, tool_name in [("Place Habitas", "habitas"), ("Place AZN", "azn"), ("Place Zone", "zone")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
                          on_click=lambda t=tool_name: self._select_tool(t))
-            self._action_buttons.append(btn)
+            self.tool_group.add(btn)
+            self._tool_buttons_by_name[tool_name] = btn
             y += ROW_HEIGHT + 4
         y += 6
 
@@ -84,7 +96,8 @@ class MapEditorSidebar:
         for label, tool_name in [("Pan", "pan"), ("Edit", "edit"), ("Delete", "delete")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
                          on_click=lambda t=tool_name: self._select_tool(t))
-            self._action_buttons.append(btn)
+            self.tool_group.add(btn)
+            self._tool_buttons_by_name[tool_name] = btn
             y += ROW_HEIGHT + 4
         for label, attr in [("Load", "on_load"), ("Save", "on_save"), ("Clear Map", "on_clear")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
@@ -112,6 +125,13 @@ class MapEditorSidebar:
         if self.on_tool:
             self.on_tool(name)
 
+    def set_active_tool(self, name: str) -> None:
+        """Highlight whichever of Habitas/AZN/Zone/Pan/Edit/Delete is active,
+        or none of them if the active tool is Terrain/Stream (those show
+        their current value via terrain_group/stream_group instead)."""
+        for tool_name, btn in self._tool_buttons_by_name.items():
+            btn.pressed = (tool_name == name)
+
     def _fire(self, attr: str) -> None:
         cb = getattr(self, attr, None)
         if cb:
@@ -131,6 +151,8 @@ class MapEditorSidebar:
         if self.terrain_group.handle_event(event):
             handled = True
         if self.stream_group.handle_event(event):
+            handled = True
+        if self.tool_group.handle_event(event):
             handled = True
         for btn in self._action_buttons:
             if btn.handle_event(event):
@@ -157,5 +179,22 @@ class MapEditorSidebar:
         y_history_header = y_tools_header + 18 + 6 * (ROW_HEIGHT + 4) + 6
         draw_text(surface, "History", (tx, y_history_header), size=11, color=(160, 165, 180))
 
+        self.tool_group.draw(surface)
         for btn in self._action_buttons:
             btn.draw(surface)
+
+        # Tooltips drawn last so they overlay everything else.
+        for group in (self.terrain_group, self.stream_group, self.tool_group):
+            for btn in group.buttons:
+                if btn.hovered and btn.tooltip:
+                    self._draw_tooltip(surface, btn)
+
+    def _draw_tooltip(self, surface: "pygame.Surface", btn: Button) -> None:
+        font = pygame.font.SysFont("sans", 12)
+        label = font.render(btn.tooltip, True, (20, 20, 20))
+        pad = 5
+        box = pygame.Rect(btn.rect.left, btn.rect.bottom + 4, label.get_width() + pad * 2, label.get_height() + pad * 2)
+        box.left = min(box.left, surface.get_width() - box.width - 4)
+        pygame.draw.rect(surface, (235, 230, 200), box, border_radius=3)
+        pygame.draw.rect(surface, (40, 40, 30), box, width=1, border_radius=3)
+        surface.blit(label, (box.x + pad, box.y + pad))

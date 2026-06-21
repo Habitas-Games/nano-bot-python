@@ -32,6 +32,24 @@ MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 0.5, 3.0, 0.1
 STATUS_BAR_HEIGHT = 26
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
 
+_cursor_setting_broken = False
+
+
+def _set_cursor_safe(cursor: int) -> None:
+    """pygame.mouse.set_cursor() can raise on environments without a real
+    cursor theme/display (confirmed under SDL's dummy driver during
+    headless testing; some minimal Linux window managers can hit this
+    too). This fires on every mouse-move when not dragging, so a crash
+    here would be frequent and severe — fail once, then silently stop
+    trying rather than spamming exceptions or crashing the app."""
+    global _cursor_setting_broken
+    if _cursor_setting_broken:
+        return
+    try:
+        pygame.mouse.set_cursor(cursor)
+    except pygame.error:
+        _cursor_setting_broken = True
+
 
 class MapEditorScreen:
     def __init__(self, screen_size: tuple[int, int]):
@@ -108,6 +126,7 @@ class MapEditorScreen:
         self.active_tool_name = name
         self.current_tool = self.tools[name]
         self.current_tool.on_activate()
+        self.sidebar.set_active_tool(name)
         self._update_status()
 
     def _on_density_selected(self, d: Density) -> None:
@@ -232,7 +251,7 @@ class MapEditorScreen:
                 grid_pos = self._to_grid_pos(event.pos)
                 self.current_tool.handle_drag(grid_pos, event.rel)
             else:
-                pygame.mouse.set_cursor(self.current_tool.get_cursor())
+                _set_cursor_safe(self.current_tool.get_cursor())
                 self._update_azn_hover(event.pos)
 
     def _update_azn_hover(self, screen_pos: tuple[int, int]) -> None:

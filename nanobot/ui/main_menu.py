@@ -1,10 +1,24 @@
 """Main menu screen: Run Match, Map Editor, Tournament, Quit. Mirrors the
-Godot project's main_menu.gd as the app's entry screen."""
+Godot project's main_menu.gd as the app's entry screen.
+
+Running a match happens on a background thread (nanobot.tournament's
+TournamentRunner already established this pattern for the same reason):
+a slow strategy can legitimately take up to 50ms/turn x 1500 turns x 2
+players (~150s worst case) per requirements.md's STR-05 timeout budget.
+Calling SimulationCore.run() directly from a button's on_click handler
+blocks pygame's event loop for that whole duration with no redraw, no
+progress indicator, and no way to cancel — confirmed by reading the
+event loop in main.py: draw() only happens after handle_event() returns,
+so a "Running..." message set inside the click handler would never
+actually reach the screen before the blocking call finished anyway."""
 
 from __future__ import annotations
 
 import glob
+import math
 import os
+import threading
+import time
 
 import pygame
 
@@ -26,6 +40,11 @@ class MainMenu:
         self.on_quit = None             # callback()
 
         self.message = ""
+        self.running_match = False
+        self._match_thread: threading.Thread | None = None
+        self._match_result: dict | None = None  # set by the thread: {"path": str} or {"error": str}
+        self._match_started_at = 0.0
+
         self._build_buttons()
 
     def resize(self, screen_size: tuple[int, int]) -> None:
@@ -48,8 +67,23 @@ class MainMenu:
         self.buttons = [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
 
     def handle_event(self, event: "pygame.event.Event") -> None:
+        if self.running_match:
+            return  # ignore input while a match is in flight — nothing to click into
         for btn in self.buttons:
             btn.handle_event(event)
+
+    def update(self, dt: float) -> None:
+        if not self.running_match:
+            return
+        if self._match_thread is not None and not self._match_thread.is_alive():
+            self.running_match = False
+            result = self._match_result or {}
+            if "error" in result:
+                self.message = result["error"]
+            else:
+                self.message = result["summary"]
+                if self.on_open_playback:
+                    self.on_open_playback(result["path"])
 
     def draw(self, surface: "pygame.Surface") -> None:
         surface.fill((18, 20, 26))
@@ -60,10 +94,34 @@ class MainMenu:
         draw_text(surface, "Program nanobots. Conquer living tissue.", (cx - 150, 130), size=14, color=(160, 165, 180))
 
         for btn in self.buttons:
+            btn.enabled = not self.running_match
             btn.draw(surface)
 
-        if self.message:
+        if self.running_match:
+            self._draw_running_indicator(surface, cx)
+        elif self.message:
             draw_text(surface, self.message, (cx - 200, self.screen_size[1] - 60), size=13, color=(220, 200, 120))
+
+    def _draw_running_indicator(self, surface: "pygame.Surface", cx: int) -> None:
+        elapsed = time.monotonic() - self._match_started_at
+        y = self.btn_quit.rect.bottom + 50
+
+        # A small spinning arc so a long-running match still reads as "alive,
+        # not frozen" even though the underlying simulation gives no progress
+        # callback (unlike the tournament runner, a single match doesn't
+        # report per-turn progress — see analysis.md for why that's out of
+        # scope here).
+        radius = 10
+        center = (cx, y)
+        angle = (elapsed * 4.0) % (2 * math.pi)
+        for i in range(8):
+            a = angle + i * (2 * math.pi / 8)
+            shade = 80 + int(150 * (i / 8))
+            px = center[0] + radius * math.cos(a)
+            py = center[1] + radius * math.sin(a)
+            pygame.draw.circle(surface, (shade, shade, shade), (int(px), int(py)), 3)
+
+        draw_text(surface, f"Running match... {elapsed:.1f}s", (cx - 70, y + 24), size=13, color=(220, 200, 120))
 
     # --- actions ---
 
@@ -80,21 +138,37 @@ class MainMenu:
             self.on_quit()
 
     def _run_match(self) -> None:
+        if self.running_match:
+            return
+
         strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
         maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
         if len(strategies) < 2 or not maps:
             self.message = "Need >= 2 strategies and >= 1 map to run a match"
             return
 
-        map_data = load_from_file(maps[0])
-        sim = SimulationCore(map_data, strategies[:2], seed=0)
-        self.message = f"Running {os.path.basename(strategies[0])} vs {os.path.basename(strategies[1])} ..."
-        log = sim.run()
+        self.running_match = True
+        self.message = ""
+        self._match_result = None
+        self._match_started_at = time.monotonic()
+        self._match_thread = threading.Thread(
+            target=self._match_worker, args=(strategies[:2], maps[0]), daemon=True)
+        self._match_thread.start()
 
-        os.makedirs(REPLAYS_DIR, exist_ok=True)
-        out_path = os.path.join(REPLAYS_DIR, "last_match.json")
-        log.save_to_file(out_path)
-        self.message = f"Match complete in {log.total_turns} turns — winner: Player {log.winner_id}"
+    def _match_worker(self, strategy_paths: list[str], map_path: str) -> None:
+        try:
+            map_data = load_from_file(map_path)
+            sim = SimulationCore(map_data, strategy_paths, seed=0)
+            log = sim.run()
 
-        if self.on_open_playback:
-            self.on_open_playback(out_path)
+            os.makedirs(REPLAYS_DIR, exist_ok=True)
+            out_path = os.path.join(REPLAYS_DIR, "last_match.json")
+            log.save_to_file(out_path)
+
+            a, b = (os.path.basename(p) for p in strategy_paths)
+            self._match_result = {
+                "path": out_path,
+                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id}",
+            }
+        except Exception as e:
+            self._match_result = {"error": f"Match failed: {e}"}

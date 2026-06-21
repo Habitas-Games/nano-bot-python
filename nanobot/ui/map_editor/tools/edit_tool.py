@@ -95,7 +95,7 @@ class EditTool(EditorTool):
     def get_status_text(self) -> str:
         if self.editing_quantity:
             return f"Editing AZN quantity: {self.quantity_buffer}_ | Enter to confirm, Esc to cancel"
-        return "Tool: Edit ✏ | Click element to edit, drag to move | Enter on AZN to edit quantity"
+        return "Tool: Edit | Click element to edit, drag to move | Enter on AZN to edit quantity"
 
     def get_cursor(self) -> int:
         return pygame.SYSTEM_CURSOR_HAND
