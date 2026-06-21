@@ -142,3 +142,17 @@ It already caught `JSONDecodeError` correctly (no gap there), but had the same "
 Verified through the actual UI, not just the unit level: constructed a `PlaybackViewer` pointed at a corrupted (wrong-shape) replay file and confirmed `draw()` shows its existing "No replay loaded" fallback instead of crashing — `viewer.draw()` already had that fallback built in from v0.0.1, it just never got reached safely before this fix because the crash happened one level down, inside `load_from_file()` itself, before the viewer's own None-check ever ran.
 
 This module had zero unit test coverage before this round (`tests/test_match_log.py` is new). 8 new tests, 260 total. Full regression sweep green.
+
+---
+
+## Follow-up round 7: a failed match could silently hang an entire tournament
+
+Checked thread robustness next: `TournamentRunner._thread_main()` runs each scheduled match on a background thread with no top-level exception handling around the actual simulation (`sim.run()`) or its replay write (`log.save_to_file(...)`) — only the already-anticipated "map failed to load" case was handled.
+
+**Confirmed directly, not hypothetically:** patched `SimulationCore.run()` to raise an unexpected exception (representing an engine bug, a disk-full error on the replay write, or anything else not already caught inside the simulation loop itself) and ran a real tournament. The background thread died — Python reports the traceback to stderr but does not crash the process — and **`on_tournament_finished` never fired, `self.results` stayed empty**. From `TournamentScreen`'s perspective: the progress bar would freeze at whatever match was in flight, permanently, with the Start button correctly disabled (so it can't be retried) and absolutely no indication anything had gone wrong — indistinguishable from a hang, with no recovery short of restarting the app.
+
+**Fixed:** extracted the per-match body into `_run_one_match()` and wrapped each call to it in a `try/except Exception` inside the loop, recording any failure via the existing `_record_error()` mechanism (same one already used for "map failed to load") and continuing to the next scheduled match — exactly the same principle as `NFR-04` ("a runtime error inside a strategy file must not crash the simulation") one level up: a failure in one match must not be able to take down the rest of the tournament.
+
+Verified three ways, including the multi-match scenario that proves recovery, not just isolation: a single failing match still fires `on_tournament_finished` and records a clean error result; a two-match tournament where only the *first* match is made to fail confirms the *second* match still runs and completes normally afterward, with the first correctly recorded as an error and the second correctly recorded as a real result.
+
+`tournament_runner.py` had zero unit test coverage before this round (`tests/test_tournament_runner.py` is new, including round-robin schedule-size coverage that had only been spot-checked manually before). 9 new tests, 269 total. Full regression sweep green, including a real multi-strategy tournament via `run_tournament.py`.

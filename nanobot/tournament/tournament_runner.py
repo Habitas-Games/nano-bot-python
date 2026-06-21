@@ -69,42 +69,59 @@ class TournamentRunner:
             if self._abort:
                 break
 
-            map_data = load_from_file(entry["map"])
-            if map_data is None:
-                self._record_error(entry, "map_load_failed")
-                if self.on_progress_updated:
-                    self.on_progress_updated(i + 1, total)
-                continue
+            try:
+                self._run_one_match(i, entry, total)
+            except Exception as e:
+                # An exception here (an engine bug, a disk-full error on
+                # save_to_file, anything not already caught inside
+                # SimulationCore.run() itself) would otherwise propagate
+                # out of this background thread and kill it silently —
+                # confirmed directly: on_tournament_finished never fires,
+                # self.results stays empty, and a screen watching this
+                # runner's progress would show a permanently frozen
+                # progress bar with no error and no way to tell the
+                # tournament has actually stopped, since nothing else
+                # would ever call back into it again. One bad match
+                # shouldn't be able to do that to the rest of the
+                # tournament, the same principle as NFR-04 one level up.
+                self._record_error(entry, f"match_failed: {e}")
 
-            sim = SimulationCore(map_data, [entry["player_a"], entry["player_b"]], int(entry["seed"]))
-            log = sim.run()
-
-            replay_path = self._replay_path(entry, i)
-            log.save_to_file(replay_path)
-
-            result = {
-                "match_index": i,
-                "map": entry["map"],
-                "player_a": entry["player_a"],
-                "player_b": entry["player_b"],
-                "winner_id": log.winner_id,
-                "final_scores": log.final_scores,
-                "total_turns": log.total_turns,
-                "replay_path": replay_path,
-                "dq_a": self._was_dq(log, 0),
-                "dq_b": self._was_dq(log, 1),
-            }
-
-            with self._lock:
-                self.results.append(result)
-
-            if self.on_match_finished:
-                self.on_match_finished(result)
             if self.on_progress_updated:
                 self.on_progress_updated(i + 1, total)
 
         if self.on_tournament_finished:
             self.on_tournament_finished()
+
+    def _run_one_match(self, i: int, entry: dict, total: int) -> None:
+        map_data = load_from_file(entry["map"])
+        if map_data is None:
+            self._record_error(entry, "map_load_failed")
+            return
+
+        sim = SimulationCore(map_data, [entry["player_a"], entry["player_b"]], int(entry["seed"]))
+        log = sim.run()
+
+        replay_path = self._replay_path(entry, i)
+        log.save_to_file(replay_path)
+
+        result = {
+            "match_index": i,
+            "map": entry["map"],
+            "player_a": entry["player_a"],
+            "player_b": entry["player_b"],
+            "winner_id": log.winner_id,
+            "final_scores": log.final_scores,
+            "total_turns": log.total_turns,
+            "replay_path": replay_path,
+            "dq_a": self._was_dq(log, 0),
+            "dq_b": self._was_dq(log, 1),
+        }
+
+        with self._lock:
+            self.results.append(result)
+
+        if self.on_match_finished:
+            self.on_match_finished(result)
 
     # --- helpers ---
 
