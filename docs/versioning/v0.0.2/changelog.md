@@ -52,3 +52,26 @@ Plus a full regression sweep after the `map_history.py` fix: the existing `tests
 
 - No unit tests for the pygame layers (renderer, playback viewer, tool event handling, main menu's threading) — see plan.md's non-goals.
 - No CI wiring.
+
+---
+
+## Follow-up round: exhaustive CLI/error-path sweep
+
+A second verification pass after the above, going beyond the happy paths the original test-writing covered: every map×strategy pairing through the real CLI, a full tournament run, malformed-input edge cases (missing CLI args, nonexistent files, a strategy with a Python syntax error, a strategy that raises on every single turn), and a final round of full-app screenshots.
+
+**Found and fixed two real robustness gaps in `core/map_loader.py`:**
+
+1. A map JSON with a non-numeric cell coordinate (e.g. `{"x": "not_a_number", ...}`) raised an unhandled `ValueError` out of `load_from_file()` instead of returning `None` with a clean error message like every other malformed-input case in that function already did. Hand-edited or corrupted map files are exactly the input this needs to survive. Fixed by wrapping the cell/element-parsing body in a try/except that catches `KeyError`/`ValueError`/`TypeError` and reports the failure the same way.
+
+2. A non-positive width or height (e.g. `{"width": -5, "height": 10}`) was silently accepted, producing a `MapData` with `width=-5` and **zero actual cells** (`range(-5*10)` is empty) rather than being rejected — a map in this state would make every coordinate incorrectly report as out-of-bounds wherever it was later used, a confusing failure far from its actual cause. Now rejected at load time with a clear message.
+
+Both verified with new regression tests (`tests/test_map_loader.py`, 8 new cases) and confirmed the fix doesn't reject legitimate input (numeric-string dimensions like `{"width": "10", ...}`, which `int()` handles fine, still load correctly).
+
+**Confirmed working correctly, not bugs:**
+
+- `example_strategy_v2.py` scores 0 when assigned to player slot 0 on `maps/vascular_network.json` specifically — traced to the cells immediately adjacent to that map's player-0 spawn corner `(0,0)` both being `BONE` (impassable), which the strategy's naive `_adjacent_free()` (checks only the 4 cardinal neighbors, never tries moving first) can't get around. This is a faithful, line-for-line port of the same heuristic from the Godot version and would behave identically there — a property of (this example strategy × this map's terrain layout), not an engine defect. The engine's behavior (BONE blocks building, exactly per spec) is correct.
+- `NFR-04` error isolation confirmed directly: a strategy file with a Python syntax error, and a separate strategy that raises an exception on every single turn, both produce a clean per-turn/per-load error log without crashing the match — the well-behaved opponent wins normally in both cases.
+- Engine pads to 2 players when only 1 strategy is supplied, matching `_player_count = max(len(strategy_paths), 2)`.
+- In-app error modal in the map editor confirmed not to crash on a corrupt file passed through the real `MapEditorScreen._load_map_from_file()` path (shows a generic "Failed to load" message rather than the specific reason — a minor polish gap, not a defect, left as-is).
+
+Full suite: 226 tests (up from 218), 0.16s. Final regression sweep (pytest, editor integration script, real CLI match, full app screenshot pass) all green.

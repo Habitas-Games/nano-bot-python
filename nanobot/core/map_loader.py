@@ -64,7 +64,31 @@ def _parse(data: dict, path: str) -> MapData | None:
             print(f"MapLoader: missing required field '{key}' in {path}")
             return None
 
-    m = MapData(int(data["width"]), int(data["height"]))
+    try:
+        width, height = int(data["width"]), int(data["height"])
+    except (TypeError, ValueError) as e:
+        print(f"MapLoader: width/height must be numbers in {path}: {e}")
+        return None
+    if width <= 0 or height <= 0:
+        print(f"MapLoader: width and height must be positive in {path} (got {width}x{height})")
+        return None
+
+    try:
+        return _parse_body(data, width, height)
+    except (KeyError, ValueError, TypeError) as e:
+        # A hand-edited or corrupted map (non-numeric coordinate, missing
+        # required key in a cell/element entry, etc.) must fail cleanly
+        # here rather than raising out of the loader and taking down
+        # whatever called it — confirmed this was previously possible:
+        # a single cell with a non-numeric "x" crashed with an unhandled
+        # ValueError instead of returning None like every other malformed-
+        # input case in this function already did.
+        print(f"MapLoader: malformed map data in {path}: {e}")
+        return None
+
+
+def _parse_body(data: dict, width: int, height: int) -> MapData:
+    m = MapData(width, height)
     m.map_name = data.get("name", "Unnamed")
 
     default_density = string_to_density(data.get("default_density", "low"))

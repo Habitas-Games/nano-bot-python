@@ -76,6 +76,49 @@ class TestRequiredFields:
         assert m is not None
         assert (m.width, m.height) == (3, 4)
 
+    def test_numeric_string_dimensions_are_accepted(self):
+        # JSON authored/edited by hand sometimes quotes numbers — int() on
+        # a numeric string works fine and shouldn't be rejected.
+        m = map_loader._parse({"width": "10", "height": "10"}, "x")
+        assert m is not None
+        assert (m.width, m.height) == (10, 10)
+
+    def test_negative_width_is_rejected(self):
+        # A previous version silently accepted this and produced a
+        # MapData with width=-5 but 0 actual cells (range(-5*10) is
+        # empty) — every coordinate would then be incorrectly reported
+        # out of bounds. Reject it outright instead.
+        assert map_loader._parse({"width": -5, "height": 10}, "x") is None
+
+    def test_zero_width_is_rejected(self):
+        assert map_loader._parse({"width": 0, "height": 10}, "x") is None
+
+    def test_zero_height_is_rejected(self):
+        assert map_loader._parse({"width": 10, "height": 0}, "x") is None
+
+    def test_non_numeric_width_is_rejected_cleanly(self):
+        assert map_loader._parse({"width": "not_a_number", "height": 10}, "x") is None
+
+    def test_malformed_cell_entry_is_rejected_cleanly_not_raised(self):
+        # A previous version let this raise an unhandled ValueError out of
+        # the loader instead of failing the same way every other malformed-
+        # input case in this function does.
+        result = map_loader._parse(
+            {"width": 10, "height": 10, "cells": [{"x": "not_a_number", "y": 5, "density": "low"}]},
+            "x",
+        )
+        assert result is None
+
+    def test_malformed_habitas_entry_is_rejected_cleanly(self):
+        result = map_loader._parse(
+            {"width": 10, "height": 10, "habitas_points": [{"x": "bad"}]}, "x")
+        assert result is None
+
+    def test_habitas_entry_missing_required_key_is_rejected_cleanly(self):
+        result = map_loader._parse(
+            {"width": 10, "height": 10, "habitas_points": [{"x": 1}]}, "x")  # no "y"
+        assert result is None
+
 
 class TestLoadFromFile:
     def test_nonexistent_file_returns_none(self):
