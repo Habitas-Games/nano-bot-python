@@ -92,7 +92,15 @@ nano-bot-python/
 
 ## Testing
 
-There's no pytest suite yet — verification so far has been integration
-checks driving real pygame events headlessly (`SDL_VIDEODRIVER=dummy`) and
-actual CLI runs. See `docs/versioning/v0.0.1/changelog.md` for what was
-verified and how.
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+218 unit tests cover the core simulation engine and map-editor logic
+(`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
+viewer, tool event handling, main menu threading) don't have unit tests
+yet — those were verified via scripted integration checks driving real
+pygame events headlessly (`SDL_VIDEODRIVER=dummy`) and real CLI runs
+instead; see `tests/check_editor.py` and `docs/versioning/v0.0.1/changelog.md`
+/ `docs/versioning/v0.0.2/changelog.md` for what was verified and how.

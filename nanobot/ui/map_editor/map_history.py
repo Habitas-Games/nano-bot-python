@@ -37,7 +37,20 @@ class MapHistory:
         return self._index > 0
 
     def undo(self, m: MapData) -> None:
+        """Restore the state as of right before the most recently completed
+        edit, then step the pointer back for the next undo call.
+
+        save_state() is always called *before* a mutation (every tool does
+        `history.save_state(doc); ops.mutate(doc)`), so `_history[_index]`
+        already holds exactly "the state right before the last edit" — the
+        correct target for one Undo. Decrementing _index before restoring
+        (as an earlier version of this method did, faithfully inherited
+        from a bug in the original Godot implementation) reads the *wrong*
+        entry: after two separate edits, a single Undo would revert both
+        at once instead of just the most recent one, since it skips past
+        the entry that actually represents "one edit ago."
+        """
         if not self.can_undo():
             return
-        self._index -= 1
         ops.restore(m, self._history[self._index])
+        self._index -= 1
