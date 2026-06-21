@@ -1,0 +1,93 @@
+{
+	"NanoAI": {
+		"hp": 20,
+		"scan": 5,
+		"capacity": 0,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 0,
+		"density_immune": false,
+		"stationary": false
+	},
+	"NanoExplorer": {
+		"hp": 20,
+		"scan": 30,
+		"capacity": 0,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 15,
+		"density_immune": true,
+		"stationary": false
+	},
+	"NanoCollector": {
+		"hp": 50,
+		"scan": 0,
+		"capacity": 20,
+		"transfer": 5,
+		"max_damage": 5,
+		"attack_range": 12,
+		"build_cost": 20,
+		"density_immune": false,
+		"stationary": false
+	},
+	"NanoContainer": {
+		"hp": 60,
+		"scan": 0,
+		"capacity": 60,
+		"transfer": 5,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 25,
+		"density_immune": false,
+		"stationary": false
+	},
+	"NanoNeedle": {
+		"hp": 150,
+		"scan": 0,
+		"capacity": 100,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 40,
+		"density_immune": false,
+		"stationary": true
+	},
+	"NanoIPCreator": {
+		"hp": 20,
+		"scan": 30,
+		"capacity": 0,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 30,
+		"density_immune": false,
+		"stationary": false,
+		"auto_destruct_turns": 500
+	},
+	"NanoBlocker": {
+		"hp": 90,
+		"scan": 0,
+		"capacity": 0,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 20,
+		"density_immune": false,
+		"stationary": false,
+		"traversal_penalty": 6
+	},
+	"NanoWall": {
+		"hp": 100,
+		"scan": 0,
+		"capacity": 0,
+		"transfer": 0,
+		"max_damage": 0,
+		"attack_range": 0,
+		"build_cost": 25,
+		"density_immune": false,
+		"stationary": false,
+		"auto_destruct_turns": 50
+	}
+}
