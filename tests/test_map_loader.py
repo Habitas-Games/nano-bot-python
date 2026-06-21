@@ -166,6 +166,21 @@ class TestLoadFromFile:
         # x1..x2 inclusive spans 4 cells (2,3,4,5); y1..y2 inclusive spans 2 cells (3,4)
         assert m.injection_zones[0]["rect"] == (2, 3, 4, 2)
 
+    def test_custom_starting_azn_is_read_from_the_map(self, tmp_path):
+        # Previously this field was write-only: MapData had no such
+        # attribute at all, so a map declaring a non-default budget had it
+        # silently discarded on load.
+        path = tmp_path / "m.json"
+        path.write_text(json.dumps({"width": 5, "height": 5, "starting_azn": 999}))
+        m = map_loader.load_from_file(str(path))
+        assert m.starting_azn == 999
+
+    def test_missing_starting_azn_defaults_to_150(self, tmp_path):
+        path = tmp_path / "m.json"
+        path.write_text(json.dumps({"width": 5, "height": 5}))
+        m = map_loader.load_from_file(str(path))
+        assert m.starting_azn == 150
+
 
 class TestSaveAndRoundTrip:
     def test_save_creates_file(self, populated_map, tmp_path):
@@ -178,6 +193,20 @@ class TestSaveAndRoundTrip:
         map_loader.save_to_file(populated_map, path)
         reloaded = map_loader.load_from_file(path)
         assert (reloaded.width, reloaded.height) == (populated_map.width, populated_map.height)
+
+    def test_round_trip_preserves_custom_starting_azn(self, populated_map, tmp_path):
+        populated_map.starting_azn = 275
+        path = str(tmp_path / "out.json")
+        map_loader.save_to_file(populated_map, path)
+        reloaded = map_loader.load_from_file(path)
+        assert reloaded.starting_azn == 275
+
+    def test_save_starting_azn_parameter_overrides_the_maps_own_value(self, populated_map, tmp_path):
+        populated_map.starting_azn = 275
+        path = str(tmp_path / "out.json")
+        map_loader.save_to_file(populated_map, path, starting_azn=50)  # explicit override
+        reloaded = map_loader.load_from_file(path)
+        assert reloaded.starting_azn == 50
 
     def test_round_trip_preserves_habitas_points(self, populated_map, tmp_path):
         path = str(tmp_path / "out.json")

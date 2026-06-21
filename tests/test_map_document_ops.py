@@ -309,3 +309,23 @@ class TestSnapshotRestore:
         m.width, m.height = 20, 20
         ops.restore(m, snap)
         assert (m.width, m.height) == (5, 5)
+
+    def test_restore_recovers_starting_azn(self):
+        # Keeping every MapData attribute covered by snapshot/restore is
+        # exactly the property that map_history.py's docstring says this
+        # module exists to guarantee — the Godot port's undo skipped
+        # several element lists for its entire lifetime by not doing this.
+        m = blank(5, 5)
+        m.starting_azn = 200
+        snap = ops.snapshot(m)
+        m.starting_azn = 999
+        ops.restore(m, snap)
+        assert m.starting_azn == 200
+
+    def test_restore_tolerates_a_snapshot_taken_before_this_field_existed(self):
+        m = blank(5, 5)
+        old_snap = ops.snapshot(m)
+        del old_snap["starting_azn"]  # simulate a snapshot saved before this field was added
+        m.starting_azn = 999
+        ops.restore(m, old_snap)  # must not raise a KeyError
+        assert m.starting_azn == 150

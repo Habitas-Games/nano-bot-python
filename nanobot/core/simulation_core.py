@@ -23,7 +23,6 @@ from nanobot.api.nano_strategy import NanoStrategy
 
 MAX_TURNS = 1500
 STRATEGY_TIMEOUT_MS = 50
-DEFAULT_STARTING_AZN = 150
 
 
 def _load_strategy_instance(path: str) -> NanoStrategy | None:
@@ -117,7 +116,11 @@ class SimulationCore:
     # --- initialisation ---
 
     def _init_match_state(self) -> None:
-        starting_azn = DEFAULT_STARTING_AZN
+        # Use the map's own declared starting budget (MapData.starting_azn,
+        # defaulting to 150 there) — previously hardcoded to a constant
+        # unconditionally here, so a map's "starting_azn" JSON field was
+        # silently never read by anyone.
+        starting_azn = self._map.starting_azn
 
         self._azn_nodes = [
             {"position": n["position"], "quantity": n["quantity"]} for n in self._map.azn_nodes

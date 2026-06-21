@@ -17,6 +17,17 @@ def make_map(width=5, height=5, density=Density.LOW, stream=StreamDir.NONE):
     return m
 
 
+class TestDefaults:
+    def test_starting_azn_defaults_to_150(self):
+        # Previously this field didn't exist on MapData at all — every map
+        # saved through map_loader.create_json() wrote "starting_azn": 150
+        # to JSON regardless of the source data, and nothing ever read it
+        # back. Fixed end-to-end; this pins the default that SimulationCore
+        # falls back to when a map's JSON doesn't specify one.
+        m = MapData(5, 5)
+        assert m.starting_azn == 150
+
+
 class TestBounds:
     def test_in_bounds(self):
         m = make_map(5, 5)

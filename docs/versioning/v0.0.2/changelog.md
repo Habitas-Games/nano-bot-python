@@ -75,3 +75,22 @@ Both verified with new regression tests (`tests/test_map_loader.py`, 8 new cases
 - In-app error modal in the map editor confirmed not to crash on a corrupt file passed through the real `MapEditorScreen._load_map_from_file()` path (shows a generic "Failed to load" message rather than the specific reason — a minor polish gap, not a defect, left as-is).
 
 Full suite: 226 tests (up from 218), 0.16s. Final regression sweep (pytest, editor integration script, real CLI match, full app screenshot pass) all green.
+
+---
+
+## Follow-up round 2: `starting_azn` was write-only, end-to-end
+
+Found by re-reading `_init_match_state()`'s own comment ("Maps may declare a starting AZN value...") against what the code actually did, the same way the `MapHistory` bug surfaced — a comment describing intended behavior that the code next to it didn't implement.
+
+**The gap:** every map JSON has always carried a `starting_azn` field, and the map editor's save path has always written one out — but `MapData` had no `starting_azn` attribute at all, `map_loader.load_from_file()` never read the field into anything, and `SimulationCore._init_match_state()` unconditionally used a hardcoded module constant regardless of what any map declared. A map author setting a custom starting budget had no way to actually do that; the field round-tripped as a write-only phantom. **Confirmed identical in the Godot original** — `map_data.gd` has no such field either, and `simulation_core.gd`'s `_init_match_state()` has the exact same "compute a fallback, then unconditionally overwrite it with the constant" dead-code shape. Inherited faithfully, not introduced by the port.
+
+**Fix, end-to-end:**
+- `MapData.__init__` now has a real `starting_azn: int = 150` attribute.
+- `map_loader._parse_body()` reads `data.get("starting_azn", 150)` into it.
+- `map_loader.create_json()`/`save_to_file()` now default to the `MapData`'s own value instead of a fixed `150` (an explicit `starting_azn=` argument still overrides it, for callers that want to).
+- `SimulationCore._init_match_state()` now reads `self._map.starting_azn` instead of the module constant, which is now unused and removed (`DEFAULT_STARTING_AZN` deleted from `simulation_core.py`).
+- `map_document_ops.snapshot()`/`restore()` now include `starting_azn` too — the `MapHistory` bug earlier in this version was caused by a partial snapshot silently breaking undo for whatever it excluded, and there's currently no editor UI to change this field, but keeping every `MapData` attribute covered by snapshot/restore avoids setting up the same trap for whenever that UI gets added. `restore()` tolerates snapshots taken before this field existed (`.get()` with a default) rather than raising.
+
+**Verified four ways**, not just at the unit level: a real `SimulationCore.run()` with `starting_azn` set artificially low (5, below the 20 needed to build a `NanoCollector`) actually changes the match outcome — a strategy that previously scored 150+ scores 0, confirming this has real gameplay effect, not just changed data plumbing; the actual `MapEditorScreen` loading a map with `starting_azn: 777` correctly reflects it (`editor.doc.starting_azn == 777`); saving through the real UI save path round-trips that same custom value to JSON; both existing shipped maps still produce byte-identical match outcomes to before this fix (both specify exactly `150`, matching the old hardcoded default, so there is zero behavior change for any map that already exists — this only changes behavior for a map that declares something other than 150, which no shipped map currently does).
+
+9 new tests (235 total). Full regression sweep green.

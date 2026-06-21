@@ -46,6 +46,7 @@ class MapData:
         self.map_name: str = ""
         self.width = width
         self.height = height
+        self.starting_azn: int = 150
         self.habitas_points: list[tuple[int, int]] = []
         self.azn_nodes: list[dict] = []  # {"position": (x, y), "quantity": int}
         self.injection_zones: list[dict] = []  # {"player": int, "rect": (x, y, w, h)}

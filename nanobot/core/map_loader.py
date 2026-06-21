@@ -90,6 +90,7 @@ def _parse(data: dict, path: str) -> MapData | None:
 def _parse_body(data: dict, width: int, height: int) -> MapData:
     m = MapData(width, height)
     m.map_name = data.get("name", "Unnamed")
+    m.starting_azn = int(data.get("starting_azn", 150))
 
     default_density = string_to_density(data.get("default_density", "low"))
     for i in range(m.width * m.height):
@@ -123,15 +124,24 @@ def _parse_body(data: dict, width: int, height: int) -> MapData:
     return m
 
 
-def create_json(m: MapData, map_name: str | None = None, starting_azn: int = 150) -> dict:
+def create_json(m: MapData, map_name: str | None = None, starting_azn: int | None = None) -> dict:
     """MapData -> JSON dict, using sparse cell encoding (only non-default
-    cells are listed) — mirrors the Godot editor's map_io.gd."""
+    cells are listed) — mirrors the Godot editor's map_io.gd.
+
+    starting_azn defaults to the MapData's own value rather than a fixed
+    150 — that field used to be write-only: every saved map always wrote
+    150 regardless of what (if anything) the source MapData carried,
+    because MapData itself had no such attribute and nothing ever read
+    the field back out of a loaded map either. A map author setting a
+    custom starting budget had no way to actually do that. Fixed
+    end-to-end (MapData, load, save, SimulationCore) — see
+    docs/versioning/v0.0.2/changelog.md."""
     out = {
         "name": map_name if map_name is not None else (m.map_name or "Untitled Map"),
         "width": m.width,
         "height": m.height,
         "default_density": "low",
-        "starting_azn": starting_azn,
+        "starting_azn": starting_azn if starting_azn is not None else m.starting_azn,
         "cells": [],
         "habitas_points": [],
         "azn_nodes": [],
@@ -162,7 +172,7 @@ def create_json(m: MapData, map_name: str | None = None, starting_azn: int = 150
     return out
 
 
-def save_to_file(m: MapData, path: str, map_name: str | None = None, starting_azn: int = 150) -> bool:
+def save_to_file(m: MapData, path: str, map_name: str | None = None, starting_azn: int | None = None) -> bool:
     directory = os.path.dirname(path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)

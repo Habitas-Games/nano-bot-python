@@ -28,6 +28,28 @@ def make_sim(width=10, height=10, players=2):
     return sim
 
 
+class TestStartingAznFromMap:
+    def test_default_map_starting_azn_seeds_every_players_bank(self):
+        sim = make_sim()  # MapData defaults starting_azn to 150
+        assert sim._player_azn_bank[0] == 150
+        assert sim._player_azn_bank[1] == 150
+
+    def test_custom_map_starting_azn_is_actually_used(self):
+        # Previously _init_match_state() unconditionally used a hardcoded
+        # module constant and never looked at the map at all — a map
+        # declaring "starting_azn": 999 in its JSON would silently still
+        # give every player only 150.
+        m = MapData(10, 10)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        m.starting_azn = 999
+        m.injection_zones = [{"player": i, "rect": (0, 0, 10, 10)} for i in range(2)]
+        sim = SimulationCore(m, ["", ""], seed=0)
+        sim._init_match_state()
+        assert sim._player_azn_bank[0] == 999
+        assert sim._player_azn_bank[1] == 999
+
+
 class TestBuildAction:
     def test_nano_ai_can_build_adjacent_passable_cell(self):
         sim = make_sim()
