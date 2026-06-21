@@ -83,11 +83,40 @@ $ python tests/check_editor.py
 ALL OK
 
 $ python run_headless.py --map maps/simple_tissue.json \
-    --strategy0 strategies/example_strategy.py \
-    --strategy1 strategies/example_strategy_v2.py --seed 42
+    --strategy_a strategies/example_strategy.py \
+    --strategy_b strategies/example_strategy_v2.py --seed 42
 HeadlessRunner: match complete in 1500 turns
-HeadlessRunner: winner — player 0
+HeadlessRunner: winner — player 1
+  player 0: 0 pts
+  player 1: 160 pts
 ```
+
+**Correction, caught while writing the participant-guide HTML
+content in the next version:** the CLI command shown above in this
+version's, v0.0.4's, and v0.0.3's "Verification" sections originally
+used `--strategy0`/`--strategy1`. `headless_runner.py` only ever reads
+`--strategy_a`/`--strategy_b`/`--strategy_c`/`--strategy_d`
+(`_execute()`'s `if "strategy_a" in args: ...`) — `_parse_args()`
+accepts *any* `--key value` pair without validating the key against
+that list, so `--strategy0`/`--strategy1` parsed without error but were
+silently never read, leaving `strategies = []`. Every one of those
+"regression sweep" headless runs in v0.0.3–v0.0.5 actually ran two
+strategy-less (`None`/`None`) players the entire time — both sitting
+idle, both scoring 0 — and the misleadingly-plausible "winner: player 0,
+0 pts both" output was the tie-break fallback, not a real verification
+of anything strategy-dependent.
+
+This does **not** call any of those versions' actual findings into
+question: the substantive changes in v0.0.3–v0.0.5 were all UI rendering
+work, verified directly via screenshots, unit tests, and method-level
+calls (`pytest`, `tests/check_editor.py`, direct slider/picker/inspector
+interaction) — none of those depended on the CLI flag. The only thing
+this invalidates is the CLI line item in each version's verification
+list, which was checking "doesn't crash," not "produces a sane score."
+Re-run with the correct flags above: player 1
+(`example_strategy_v2.py`) now correctly scores 160 instead of both
+sides showing 0, confirming the engine itself was never affected by
+this — only the flag name in my own test invocations was wrong.
 
 Plus direct interaction tests, not just code review: simulated a real
 mouse click at the turn slider's exact midpoint and confirmed

@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nano-bot-python — Participant Guide</title>
+<style>
+  :root {
+    --bg:       #0d0f16;
+    --surface:  #141720;
+    --border:   #1e2230;
+    --accent:   #38e570;
+    --accent2:  #407fff;
+    --red:      #ff4d40;
+    --gold:     #ffd91a;
+    --muted:    #8a8fa8;
+    --text:     #d8dce8;
+    --heading:  #eceef6;
+    --code-bg:  #0a0c12;
+    --code-bdr: #252a3a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── layout ── */
+  .page { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 48px;
+  }
+  .logo { font-family: monospace; font-size: 42px; color: var(--accent); font-weight: 700; letter-spacing: -1px; }
+  .tagline { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .pill {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    margin-right: 6px;
+  }
+
+  /* ── typography ── */
+  h1 { font-size: 26px; color: var(--heading); margin: 48px 0 16px; }
+  h2 { font-size: 19px; color: var(--heading); margin: 36px 0 12px; border-left: 3px solid var(--accent); padding-left: 12px; }
+  h3 { font-size: 15px; color: var(--accent); margin: 24px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+  p  { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 5px; }
+  a  { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--heading); }
+  em { color: var(--gold); font-style: normal; }
+
+  /* ── callout boxes ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin: 20px 0;
+  }
+  .callout.warn  { border-color: var(--gold);  }
+  .callout.info  { border-color: var(--accent2); }
+  .callout.danger{ border-color: var(--red);   }
+  .callout-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; color: var(--accent); }
+  .callout.warn  .callout-title { color: var(--gold); }
+  .callout.info  .callout-title { color: var(--accent2); }
+  .callout.danger .callout-title { color: var(--red); }
+
+  /* ── code ── */
+  code {
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--code-bdr);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--accent);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-bdr);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 16px 0 24px;
+    line-height: 1.55;
+  }
+  pre code {
+    background: none; border: none; padding: 0;
+    font-size: 13px; color: var(--text);
+  }
+  /* Syntax colour hints (hand-applied via spans) */
+  .kw  { color: #c792ea; }
+  .fn  { color: #82aaff; }
+  .str { color: #c3e88d; }
+  .num { color: #f78c6c; }
+  .cmt { color: #546178; font-style: italic; }
+  .type{ color: var(--gold); }
+
+  /* ── tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 28px; font-size: 13px; }
+  th {
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .center { text-align: center; }
+  .mono { font-family: monospace; font-size: 12px; color: var(--accent); }
+
+  /* ── bot cards ── */
+  .bot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 16px 0 28px;
+  }
+  .bot-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .bot-card h4 { color: var(--accent); font-size: 13px; margin-bottom: 6px; }
+  .bot-card .stat { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .bot-card .stat strong { color: var(--text); }
+
+  /* ── score formula ── */
+  .formula {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    text-align: center;
+    font-size: 18px;
+    color: var(--heading);
+    margin: 16px 0;
+  }
+  .formula sub { font-size: 11px; color: var(--muted); }
+
+  /* ── toc ── */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 40px;
+  }
+  .toc h3 { margin-top: 0; }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin-bottom: 4px; font-size: 14px; }
+
+  /* ── step badge ── */
+  .step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    font-size: 12px;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  .step-row { display: flex; align-items: flex-start; margin-bottom: 12px; }
+  .step-row p { margin: 0; }
+
+  /* ── images ── */
+  .hero {
+    width: 100%; border-radius: 10px; margin-bottom: 36px;
+    max-height: 260px; object-fit: cover; object-position: center 55%;
+    border: 1px solid var(--border);
+  }
+  .roster {
+    width: 100%; border-radius: 8px; margin: 16px 0 24px;
+    border: 1px solid var(--border); background: #fff;
+  }
+  .sprite-wrap {
+    display: flex; justify-content: center; align-items: center;
+    background: #1a1e2e; border-radius: 6px; padding: 10px;
+    margin-bottom: 10px;
+  }
+  .sprite-wrap img {
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    width: 64px; height: 64px;
+  }
+  .tile-thumb {
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    width: 32px; height: 32px; vertical-align: middle;
+    border-radius: 3px; border: 1px solid var(--border);
+  }
+  .marker-thumb {
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    width: 28px; height: 28px; vertical-align: middle;
+  }
+  figcaption {
+    text-align: center; font-size: 12px; color: var(--muted); margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">nano-bot-python</div>
+  <div class="tagline">Simulation Platform — Participant Guide</div>
+  <span class="pill">Python 3.10+</span>
+  <span class="pill">Turn-based</span>
+  <span class="pill">1 500 turns max</span>
+  <span class="pill">2-player head-to-head</span>
+</header>
+
+
+<img src="../assets/cover.png" alt="nano-bot nanobots in tissue" class="hero">
+<!-- ── TOC ───────────────────────────────────────────────────────────────── -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#quickstart">Quick-start in 3 steps</a></li>
+    <li><a href="#turn">How a turn works</a></li>
+    <li><a href="#map">The map</a></li>
+    <li><a href="#bots">Bot types &amp; stats</a></li>
+    <li><a href="#scoring">Scoring</a></li>
+    <li><a href="#api">Full API reference</a></li>
+    <li><a href="#example">Walkthrough: example_strategy_v2</a></li>
+    <li><a href="#tips">Strategy tips</a></li>
+  </ol>
+</div>
+
+<!-- ── 1. OVERVIEW ────────────────────────────────────────────────────────── -->
+<h1 id="overview">1 — Overview</h1>
+
+<p>
+  <strong>nano-bot-python</strong> is a head-to-head programming competition set inside a simulated
+  human body. You write a Python class that controls a small fleet of nanobots navigating
+  a grid of living tissue. The goal is to occupy <em>Habitas Points</em> (scoring locations
+  scattered across the map) and deliver <em>AZN</em> (the energy molecule) to them.
+  The player with the highest score after 1 500 turns wins.
+</p>
+<p>
+  The simulation is fully deterministic and runs headless at hundreds of turns per
+  second. Your strategy file is just one Python file — no pygame, no UI code, no
+  dependencies beyond the provided API.
+</p>
+
+<!-- ── 2. QUICK-START ─────────────────────────────────────────────────────── -->
+<h1 id="quickstart">2 — Quick-start in 3 steps</h1>
+
+<div class="step-row">
+  <span class="step">1</span>
+  <p>
+    <strong>Copy the starter file.</strong><br>
+    Duplicate <code>strategies/example_strategy.py</code> and rename it to something
+    unique, e.g. <code>strategies/my_strategy.py</code>.
+  </p>
+</div>
+<div class="step-row">
+  <span class="step">2</span>
+  <p>
+    <strong>Run the app</strong> (<code>./run.sh</code>) and open <em>Main Menu → Run Match</em>.
+    Use the <strong>Player 1 Strategy</strong> / <strong>Player 2 Strategy</strong> picker
+    buttons above "Run Match" to select <code>my_strategy</code> for one side and pit it
+    against <code>example_strategy_v2</code> or any other file in <code>strategies/</code>.
+  </p>
+</div>
+<div class="step-row">
+  <span class="step">3</span>
+  <p>
+    <strong>Iterate.</strong> The replay viewer lets you scrub through all 1 500 turns with
+    the turn slider, inspect individual bots, and zoom into any area. Pan with
+    <em>middle-drag</em>, zoom with <em>scroll-wheel</em>, inspect a bot with
+    <em>left-click</em> on it.
+  </p>
+</div>
+
+<div class="callout">
+  <div class="callout-title">File format</div>
+  Your strategy must subclass <code>NanoStrategy</code> (from
+  <code>nanobot.api.nano_strategy</code>) and live anywhere under
+  <code>strategies/</code> as a <code>.py</code> file. If a file defines more than one
+  <code>NanoStrategy</code> subclass, loading fails loudly rather than guessing which one
+  you meant — keep one strategy class per file.
+</div>
+
+<pre><code><span class="cmt"># strategies/my_strategy.py</span>
+<span class="kw">from</span> nanobot.api.nano_strategy <span class="kw">import</span> <span class="type">NanoStrategy</span>
+
+<span class="kw">class</span> <span class="type">MyStrategy</span>(<span class="type">NanoStrategy</span>):
+    <span class="kw">def</span> <span class="fn">choose_injection_point</span>(<span class="kw">self</span>, map_info):
+        <span class="cmt"># Return the grid cell where your NanoAI spawns.</span>
+        <span class="cmt"># Must be inside your assigned injection zone.</span>
+        <span class="kw">return</span> (<span class="num">0</span>, <span class="num">0</span>)   <span class="cmt"># fallback: zone top-left</span>
+
+    <span class="kw">def</span> <span class="fn">what_to_do_next</span>(<span class="kw">self</span>, map_info, my_bots):
+        <span class="cmt"># Called once per turn. Issue commands to your bots.</span>
+        <span class="kw">for</span> bot <span class="kw">in</span> my_bots:
+            <span class="kw">if</span> bot.type == <span class="str">"NanoAI"</span>:
+                bot.<span class="fn">stop</span>()
+</code></pre>
+
+<!-- ── 3. TURN ─────────────────────────────────────────────────────────────── -->
+<h1 id="turn">3 — How a turn works</h1>
+
+<p>Each of the 1 500 turns executes these phases in order:</p>
+
+<table>
+  <thead><tr><th>#</th><th>Phase</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">1</td><td><strong>Timers</strong></td><td>Movement cooldowns and auto-destruct countdowns tick down.</td></tr>
+    <tr><td class="mono">2</td><td><strong>Movement</strong></td><td>Bots with a queued path advance one cell (if their cooldown reached 0).</td></tr>
+    <tr><td class="mono">3</td><td><strong>Strategy</strong></td><td><code>what_to_do_next()</code> is called for each player. You have <strong>50 ms</strong> wall-clock; exceeding it forfeits the turn.</td></tr>
+    <tr><td class="mono">4</td><td><strong>Actions</strong></td><td>Commands queued in phase 3 execute: builds, collects, transfers, stops.</td></tr>
+    <tr><td class="mono">5</td><td><strong>Combat</strong></td><td><code>defend()</code> actions fire — attackers deal damage to targets.</td></tr>
+    <tr><td class="mono">6</td><td><strong>Auto-destruct</strong></td><td>Bots whose countdown reached 0 are removed.</td></tr>
+    <tr><td class="mono">7</td><td><strong>Scores</strong></td><td>Scores are recalculated from the current state of Habitas Points.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <div class="callout-title">Command ordering</div>
+  If you call multiple action methods on the same bot in one turn, <strong>only the last
+  call takes effect</strong>. A <code>move_to()</code> followed by <code>stop()</code>
+  results in a stop.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">Movement is persistent</div>
+  <code>move_to(target)</code> is fire-and-forget. The bot keeps walking toward
+  <em>target</em> across future turns without you issuing the command again. Call
+  <code>stop()</code> to cancel a path.
+</div>
+
+<!-- ── 4. MAP ──────────────────────────────────────────────────────────────── -->
+<h1 id="map">4 — The map</h1>
+
+<h2>Grid</h2>
+<p>
+  Maps are rectangular grids — each map JSON declares its own width and height (the two
+  bundled maps are 80×80 and 60×60). Every cell has a
+  <strong>density</strong> that affects how many turns it takes to traverse:
+</p>
+
+<table>
+  <thead><tr><th>Density</th><th>Turns to cross</th><th>Appearance</th></tr></thead>
+  <tbody>
+    <tr><td><img src="../assets/tiles/tile_low.png" alt="Low tile" class="tile-thumb"> <strong>Low</strong></td><td class="center">2</td><td>Pink living tissue — most of the map</td></tr>
+    <tr><td><img src="../assets/tiles/tile_medium.png" alt="Medium tile" class="tile-thumb"> <strong>Medium</strong></td><td class="center">3</td><td>Purple denser tissue</td></tr>
+    <tr><td><img src="../assets/tiles/tile_high.png" alt="High tile" class="tile-thumb"> <strong>High</strong></td><td class="center">4</td><td>Deep purple, fibrous</td></tr>
+    <tr><td><img src="../assets/tiles/tile_bone.png" alt="Bone tile" class="tile-thumb"> <strong>Bone</strong></td><td class="center">∞</td><td>Dark, impassable</td></tr>
+  </tbody>
+</table>
+
+<h2>Bloodstreams</h2>
+<p>
+  Some cells carry a directional current. Moving <em>with</em> the stream costs
+  <strong>−2 turns</strong>; moving <em>against</em> it costs <strong>+2 turns</strong>.
+  The minimum cost is always 1.
+</p>
+
+<h2>Habitas Points</h2>
+<p>
+  <img src="../assets/markers/habitas_neutral.png" alt="Habitas Point" class="marker-thumb"> Gold diamond markers on the map. Placing a <strong>NanoNeedle</strong> on one of these
+  cells claims it for your team and generates score every turn (see §6).
+</p>
+
+<h2>AZN Nodes</h2>
+<p>
+  <img src="../assets/markers/azn_node.png" alt="AZN Node" class="marker-thumb"> Green orbs scattered across the map. Each holds a fixed quantity of AZN. Cells deplete
+  permanently — coordinate with your collectors before the enemy drains them first.
+</p>
+
+<h2>Injection zones</h2>
+<p>
+  <img src="../assets/markers/injection_zone.png" alt="Injection zone" class="marker-thumb" style="image-rendering:pixelated;width:32px;height:32px"> Each player has a rectangular zone in a corner of the map. Your NanoAI spawns there,
+  and transferring AZN to your bank requires being inside this zone.
+</p>
+
+<!-- ── 5. BOTS ─────────────────────────────────────────────────────────────── -->
+<h1 id="bots">5 — Bot types &amp; stats</h1>
+
+<p>
+  Every player starts with one <strong>NanoAI</strong>. All other bots are built by the
+  NanoAI from your AZN bank. You begin each match with <strong>150 AZN</strong>
+  (or whatever the map's own <code>starting_azn</code> field declares, if set).
+</p>
+
+<figure>
+  <img src="../assets/Tier 1 — Bot Sprites.png" alt="All 8 bot sprites" class="roster">
+  <figcaption>All eight bot types — pixel art sprites at game scale (×4)</figcaption>
+</figure>
+<div class="bot-grid">
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanoai.png" alt="NanoAI sprite"></div>
+    <h4>NanoAI</h4>
+    <div class="stat">Cost: <strong>spawns free</strong></div>
+    <div class="stat">HP: <strong>20</strong></div>
+    <div class="stat">Scan: <strong>5</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Your command unit. The only bot that can <code>build()</code> other bots.
+      If it dies, no new bots can be built.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanocollector.png" alt="NanoCollector sprite"></div>
+    <h4>NanoCollector</h4>
+    <div class="stat">Cost: <strong>20 AZN</strong></div>
+    <div class="stat">HP: <strong>50</strong></div>
+    <div class="stat">Capacity: <strong>20</strong></div>
+    <div class="stat">Transfer: <strong>5 / turn</strong></div>
+    <div class="stat">Damage: <strong>1–5</strong> (range 12)</div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Collects AZN from nodes and delivers it to needles or your bank.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanocontainer.png" alt="NanoContainer sprite"></div>
+    <h4>NanoContainer</h4>
+    <div class="stat">Cost: <strong>25 AZN</strong></div>
+    <div class="stat">HP: <strong>60</strong></div>
+    <div class="stat">Capacity: <strong>60</strong></div>
+    <div class="stat">Transfer: <strong>5 / turn</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      High-capacity storage. Useful for stockpiling AZN before building needles.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanoneedle.png" alt="NanoNeedle sprite"></div>
+    <h4>NanoNeedle</h4>
+    <div class="stat">Cost: <strong>40 AZN</strong></div>
+    <div class="stat">HP: <strong>150</strong></div>
+    <div class="stat">Capacity: <strong>100</strong></div>
+    <div class="stat">Stationary: <strong>yes</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Placed on a Habitas Point to claim it. Cannot move once built.
+      More AZN inside = more score per turn.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanoexplorer.png" alt="NanoExplorer sprite"></div>
+    <h4>NanoExplorer</h4>
+    <div class="stat">Cost: <strong>15 AZN</strong></div>
+    <div class="stat">HP: <strong>20</strong></div>
+    <div class="stat">Scan: <strong>30</strong></div>
+    <div class="stat">Density-immune: <strong>yes</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Moves at the same speed regardless of terrain. Great for scouting
+      and early map reconnaissance.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanoblocker.png" alt="NanoBlocker sprite"></div>
+    <h4>NanoBlocker</h4>
+    <div class="stat">Cost: <strong>20 AZN</strong></div>
+    <div class="stat">HP: <strong>90</strong></div>
+    <div class="stat">Traversal penalty: <strong>+6 turns</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Standing in a cell adds 6 extra turns to any enemy trying to pass through.
+      Effective roadblock on chokepoints.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanowall.png" alt="NanoWall sprite"></div>
+    <h4>NanoWall</h4>
+    <div class="stat">Cost: <strong>25 AZN</strong></div>
+    <div class="stat">HP: <strong>100</strong></div>
+    <div class="stat">Auto-destructs: <strong>50 turns</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Completely blocks enemy movement through its cell. Temporary — it
+      self-destructs after 50 turns.
+    </p>
+  </div>
+
+  <div class="bot-card">
+    <div class="sprite-wrap"><img src="../assets/bots/bot_nanoipcreator.png" alt="NanoIPCreator sprite"></div>
+    <h4>NanoIPCreator</h4>
+    <div class="stat">Cost: <strong>30 AZN</strong></div>
+    <div class="stat">HP: <strong>20</strong></div>
+    <div class="stat">Scan: <strong>30</strong></div>
+    <div class="stat">Auto-destructs: <strong>500 turns</strong></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">
+      Use <code>open_ip()</code> to create a new injection point at its
+      current position — useful for mid-map resupply depots.
+    </p>
+  </div>
+
+</div>
+
+<h2>Building rules</h2>
+<ul>
+  <li>Only the <strong>NanoAI</strong> can build.</li>
+  <li>The build target must be <strong>exactly 1 cell away</strong> (Manhattan distance = 1) from the NanoAI.</li>
+  <li>The target cell must be passable (not Bone, not occupied by an enemy NanoWall).</li>
+  <li>AZN is deducted from your bank immediately; the new bot appears in the same turn.</li>
+</ul>
+
+<!-- ── 6. SCORING ─────────────────────────────────────────────────────────── -->
+<h1 id="scoring">6 — Scoring</h1>
+
+<p>
+  Scores are computed <strong>every turn</strong> from the live state of Habitas Points.
+  The match ends after turn 1 500 (or when one side has no bots left). The final score
+  is the value at the last turn.
+</p>
+
+<div class="formula">
+  Score per point =
+  <span style="color:var(--accent)">20 + 2 × AZN stored</span>
+  &nbsp;(when AZN &gt; 0)<br>
+  <span style="font-size:14px;color:var(--muted)">or 5 if the needle is planted but carries no AZN</span>
+</div>
+
+<table>
+  <thead><tr><th>Situation</th><th>Points / turn</th></tr></thead>
+  <tbody>
+    <tr><td>NanoNeedle on Habitas Point, 0 AZN</td><td class="center">5</td></tr>
+    <tr><td>NanoNeedle on Habitas Point, 10 AZN</td><td class="center">40</td></tr>
+    <tr><td>NanoNeedle on Habitas Point, 50 AZN</td><td class="center">120</td></tr>
+    <tr><td>NanoNeedle on Habitas Point, 100 AZN (full)</td><td class="center">220</td></tr>
+    <tr><td>No needle (point unoccupied)</td><td class="center">0</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <div class="callout-title">Score resets each turn</div>
+  Scores are recalculated from scratch every turn — not accumulated. A needle that
+  gets destroyed sets your score from that point to 0. Rush to replant.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">Tied final scores</div>
+  If both players have the same score at turn 1 500, the winner is decided first by
+  bots still alive, then by AZN currently banked. If everything is still tied after
+  that, player 0 wins by convention — in practice this only happens in a fully
+  symmetric match.
+</div>
+
+<!-- ── 7. API ──────────────────────────────────────────────────────────────── -->
+<h1 id="api">7 — Full API reference</h1>
+
+<h2>NanoStrategy — your class</h2>
+
+<p>Subclass <code>nanobot.api.nano_strategy.NanoStrategy</code>.</p>
+
+<table>
+  <thead><tr><th>Method</th><th>Called when</th><th>Return</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>choose_injection_point(map_info)</code></td>
+      <td>Once, before turn 1</td>
+      <td><code>(x, y)</code> tuple — spawn cell inside your zone</td>
+    </tr>
+    <tr>
+      <td><code>what_to_do_next(map_info, my_bots)</code></td>
+      <td>Every turn</td>
+      <td><code>None</code> — issue commands via <code>BotProxy</code> methods</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>BotProxy — read your bots, issue commands</h2>
+
+<p>Each element of <code>my_bots: list[BotProxy]</code> is a <code>BotProxy</code>.</p>
+
+<h3>Properties (read-only)</h3>
+<table>
+  <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>int</td><td>Unique bot ID (stable across turns)</td></tr>
+    <tr><td><code>type</code></td><td>str</td><td><code>"NanoAI"</code>, <code>"NanoCollector"</code>, etc.</td></tr>
+    <tr><td><code>position</code></td><td>tuple[int, int]</td><td>Current grid cell (x, y)</td></tr>
+    <tr><td><code>hp</code></td><td>int</td><td>Current hit points</td></tr>
+    <tr><td><code>max_hp</code></td><td>int</td><td>Maximum hit points</td></tr>
+    <tr><td><code>azn</code></td><td>int</td><td>AZN currently carried</td></tr>
+    <tr><td><code>is_alive</code></td><td>bool</td><td>False once HP reaches 0</td></tr>
+    <tr><td><code>is_moving</code></td><td>bool</td><td>True if mid-step (movement cooldown active)</td></tr>
+    <tr><td><code>has_path</code></td><td>bool</td><td>True if a destination is queued</td></tr>
+  </tbody>
+</table>
+
+<h3>Action methods</h3>
+<table>
+  <thead><tr><th>Method</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>move_to(target: tuple[int, int])</code></td>
+      <td>Path-find to <em>target</em> and keep moving there until arrived or cancelled.</td>
+    </tr>
+    <tr>
+      <td><code>stop()</code></td>
+      <td>Clear the queued path. The bot stops at its current cell next turn.</td>
+    </tr>
+    <tr>
+      <td><code>collect_from(source_position: tuple[int, int])</code></td>
+      <td>Collect AZN from the node at <em>source_position</em>. Bot must be on that cell.</td>
+    </tr>
+    <tr>
+      <td><code>transfer_to(target_position: tuple[int, int])</code></td>
+      <td>Transfer AZN to: a friendly NanoNeedle at <em>target_position</em> (bot must be on the cell), or back to your AZN bank if bot is inside your injection zone.</td>
+    </tr>
+    <tr>
+      <td><code>build(bot_type: str, at_position: tuple[int, int])</code></td>
+      <td>NanoAI only. Build a new bot at <em>at_position</em> (1 cell away). Deducts cost from bank.</td>
+    </tr>
+    <tr>
+      <td><code>defend(enemy_position: tuple[int, int])</code></td>
+      <td>Attack any enemy bot on <em>enemy_position</em> if within range. One-shot per turn.</td>
+    </tr>
+    <tr>
+      <td><code>open_ip()</code></td>
+      <td>NanoIPCreator only. Register current cell as a new injection point.</td>
+    </tr>
+    <tr>
+      <td><code>self_destruct()</code></td>
+      <td>Immediately remove the bot from play.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>MapInfo — map snapshot</h2>
+
+<table>
+  <thead><tr><th>Property / Method</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>size</code></td><td>tuple[int, int]</td><td>Map dimensions (width, height)</td></tr>
+    <tr><td><code>turn</code></td><td>int</td><td>Current turn number (1–1500)</td></tr>
+    <tr><td><code>azn_bank</code></td><td>int</td><td>Your current AZN build budget</td></tr>
+    <tr><td><code>habitas_points</code></td><td>list[HabitasPointInfo]</td><td>All Habitas Points and their state</td></tr>
+    <tr><td><code>azn_nodes</code></td><td>list[AZNNodeInfo]</td><td>All AZN nodes and quantities remaining</td></tr>
+    <tr><td><code>visible_enemies</code></td><td>list[dict]</td><td>All visible enemy bots: <code>{id, type, position, hp}</code></td></tr>
+    <tr><td><code>get_cell(x, y) -&gt; CellInfo | None</code></td><td>CellInfo</td><td>Terrain info for one cell, or <code>None</code> if out of bounds</td></tr>
+  </tbody>
+</table>
+
+<h2>HabitasPointInfo</h2>
+<table>
+  <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>position</code></td><td>tuple[int, int]</td><td>Grid cell of this point</td></tr>
+    <tr><td><code>owner_id</code></td><td>int</td><td>Your player ID if you own it, −1 if unoccupied, enemy ID otherwise</td></tr>
+    <tr><td><code>azn_stored</code></td><td>int</td><td>AZN currently held in the needle (0 if unoccupied)</td></tr>
+  </tbody>
+</table>
+
+<h2>AZNNodeInfo</h2>
+<table>
+  <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>position</code></td><td>tuple[int, int]</td><td>Grid cell of the node</td></tr>
+    <tr><td><code>quantity</code></td><td>int</td><td>AZN remaining (0 = depleted)</td></tr>
+  </tbody>
+</table>
+
+<h2>CellInfo</h2>
+<table>
+  <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>position</code></td><td>tuple[int, int]</td><td>This cell's coordinates</td></tr>
+    <tr><td><code>density</code></td><td>Density</td><td>LOW, MEDIUM, HIGH, or BONE</td></tr>
+    <tr><td><code>stream_direction</code></td><td>StreamDir</td><td>NONE, NORTH, SOUTH, EAST, or WEST</td></tr>
+    <tr><td><code>is_bone</code></td><td>bool</td><td>Shortcut: true if impassable</td></tr>
+  </tbody>
+</table>
+
+<!-- ── 8. EXAMPLE WALKTHROUGH ─────────────────────────────────────────────── -->
+<h1 id="example">8 — Walkthrough: example_strategy_v2</h1>
+
+<p>
+  <code>strategies/example_strategy.py</code> is the minimal starter — it just walks every
+  bot toward the first Habitas Point and never builds anything, so it always scores 0.
+  <code>strategies/example_strategy_v2.py</code> demonstrates the basic economic loop in
+  about 130 lines. Here is what it does turn by turn:
+</p>
+
+<table>
+  <thead><tr><th>Phase</th><th>What the strategy does</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Turn 1</td>
+      <td>NanoAI builds a NanoCollector on an adjacent cell (costs 20 AZN, bank → 130).</td>
+    </tr>
+    <tr>
+      <td>Turns 2–N</td>
+      <td>NanoAI moves toward the nearest unoccupied Habitas Point, stopping 1 cell away. Meanwhile the collector heads to the nearest AZN node and starts filling up.</td>
+    </tr>
+    <tr>
+      <td>Turn M</td>
+      <td>Once the NanoAI is 1 cell from the target and has ≥ 40 AZN in the bank, it builds a NanoNeedle directly on the point (costs 40 AZN).</td>
+    </tr>
+    <tr>
+      <td>Turn M+</td>
+      <td>The collector ferries AZN from nodes → NanoNeedle. When all nodes are depleted it delivers whatever it carries and stops.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The result: one Habitas Point claimed, scoring between 5 and 220 pts/turn depending
+  on how much AZN the needle accumulates before resources run dry.
+</p>
+
+<div class="callout">
+  <div class="callout-title">Known limitation in the example strategy</div>
+  It only ever claims <em>one</em> Habitas Point. A competitive strategy should claim
+  multiple points and potentially contest enemy points.
+</div>
+
+<!-- ── 9. TIPS ─────────────────────────────────────────────────────────────── -->
+<h1 id="tips">9 — Strategy tips</h1>
+
+<h2>Economic fundamentals</h2>
+<ul>
+  <li>Starting bank is 150 AZN. A NanoCollector (20) + NanoNeedle (40) costs 60 — leaving 90 AZN for expansion.</li>
+  <li>Use multiple collectors in parallel: one fetches AZN while another is walking back to deliver.</li>
+  <li>A NanoContainer (60 AZN capacity, 25 AZN cost) amortises delivery trips — good when the nearest AZN node is far from the needle.</li>
+  <li>Transfer AZN back to your bank if you need to build while your collector is carrying — <code>transfer_to()</code> inside your injection zone banks it.</li>
+</ul>
+
+<h2>Speed &amp; pathing</h2>
+<ul>
+  <li>Bloodstream cells that flow <em>toward</em> your destination cut the crossing cost to as low as 1 turn — plan routes through favourable currents.</li>
+  <li>A NanoExplorer ignores density penalties entirely. Use one to scout the map on turn 1 and cache the terrain layout.</li>
+  <li><code>move_to()</code> recalculates a path only when the destination changes. Re-issuing the same target every turn is cheap (the cached path is reused).</li>
+</ul>
+
+<h2>Claiming Habitas Points</h2>
+<ul>
+  <li>Aim to plant a needle <em>before</em> AZN nodes are exhausted — scoring 5 pts/turn is still better than 0.</li>
+  <li>Multiple needles are better than one full needle. Four points at 5 pts/turn (20 total) beats one point at 5 pts/turn.</li>
+  <li>An enemy's needle can be destroyed by dealing enough damage with <code>defend()</code> from a NanoCollector (which has an attack range of 12 and max damage of 5).</li>
+</ul>
+
+<h2>Defence</h2>
+<ul>
+  <li>A NanoWall (50 turns, 25 AZN) on a chokepoint can delay an approaching enemy collector for many turns — time you can use to claim a contested point.</li>
+  <li>A NanoBlocker (persistent, 20 AZN) adds 6 extra turns to every enemy step through its cell — stack two for near-complete shutdown of a corridor.</li>
+  <li>Your NanoNeedle has 150 HP. A single NanoCollector dealing 1–5 damage per turn needs 30–150 turns to destroy it — build a blocker nearby to slow the assault.</li>
+</ul>
+
+<h2>Time budget</h2>
+<ul>
+  <li>Your <code>what_to_do_next()</code> must return within <strong>50 ms</strong>. Avoid expensive loops over the full map every turn — cache what you can across turns using instance attributes on your strategy object.</li>
+  <li>Pathfinding is done by the engine (A*) — calling <code>move_to()</code> is not something you should run on every bot every turn if you can avoid it, especially on a large map.</li>
+  <li>An exception raised inside either of your methods forfeits that turn (or falls back to the default spawn point for <code>choose_injection_point</code>) rather than crashing the match — but it's still a wasted turn, so wrap risky logic in your own <code>try/except</code> if you want to recover within the same turn.</li>
+</ul>
+
+<div class="callout info">
+  <div class="callout-title">Debugging tip</div>
+  Every match — whether run from the main menu, <code>run_headless.py</code>, or a
+  tournament — saves a replay JSON. Open it from the main menu's <em>Load Replay</em>
+  picker (or pass its path directly) to scrub through every turn with the jump-to-turn
+  slider and inspect bot positions, actions, and events. Click any bot on the map to
+  read its current stats in the side panel.
+</div>
+
+<!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+<hr style="border:none;border-top:1px solid var(--border);margin:48px 0 24px">
+<p style="color:var(--muted);font-size:13px;text-align:center">
+  nano-bot-python Simulation Platform &mdash; good luck
+</p>
+
+</div>
+</body>
+</html>
