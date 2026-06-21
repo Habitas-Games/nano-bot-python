@@ -118,3 +118,15 @@ While testing a 3-strategy tournament, checked what `_load_strategy_instance()` 
 **Fixed:** restrict candidates to classes whose `__module__` actually matches the loaded module (excludes imported classes); if zero match, same "no subclass found" message as before; if more than one match, fail loudly with the names of all candidates rather than silently picking one — a participant should see this and fix their file, not debug a confusing "my strategy isn't doing what I coded" session caused by the wrong class quietly running.
 
 7 new tests (`tests/test_strategy_loading.py`), 245 total. Full regression sweep green.
+
+---
+
+## Follow-up round 5: `BotTypeRegistry` — a real porting regression, not an inherited bug
+
+Checked what happens with a missing or corrupted `data/bot_types.json` (`get_type()` is called constantly throughout `SimulationCore`'s action handlers — a crash here takes down the entire match, headless run, or app). Two real gaps, both confirmed by direct testing:
+
+1. **Malformed JSON crashed with an unhandled `JSONDecodeError`.** Unlike every other finding in this version, this one is the *opposite* situation: the Godot original (`bot_type_registry.gd`) already checks `json.parse(...) != OK` and fails gracefully — the initial Python port used `json.load(f)` directly with no `try/except` at all, a missed translation, not an inherited issue. Fixed by catching `json.JSONDecodeError` and reporting the same way the existing missing-file branch already does.
+
+2. **Syntactically-valid JSON that isn't an object (e.g. a bare array) parsed without error but crashed on first real use** — `get_type()`'s `_data.get(...)` raises `AttributeError` on a list. Lower-probability than a typo causing a parse error, but still a reachable crash from a malformed data file. Fixed by checking `isinstance(parsed, dict)` after a successful parse and treating a wrong shape the same as a parse failure.
+
+7 new tests (`tests/test_bot_type_registry.py`), 252 total. Full regression sweep green, including confirming the real `data/bot_types.json` still loads correctly (this is the one file in the whole fix where "does the unmodified real data still work" needed explicit checking, since every other fix in this version dealt with hypothetical malformed input, not the actual shipped data file).
