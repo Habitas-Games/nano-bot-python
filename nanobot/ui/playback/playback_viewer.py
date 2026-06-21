@@ -22,6 +22,9 @@ SIDEBAR_WIDTH = 260
 CONTROL_BAR_HEIGHT = 50
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
 
+# Fallback flat colors, used only if a texture file is missing — the real
+# rendering uses the same tile/marker textures as the map editor and the
+# Godot original's map_renderer.gd, not these.
 DENSITY_COLOR = {
     Density.LOW: (200, 70, 70),
     Density.MEDIUM: (70, 90, 200),
@@ -34,14 +37,21 @@ DENSITY_COLOR = {
 GRID_COLOR = (25, 12, 12, 70)
 PLAYER_COLORS = [(64, 140, 255), (255, 77, 64), (60, 220, 110), (255, 215, 40)]
 SPEEDS = [0.25, 0.5, 1.0, 2.0, 4.0]
+# How far the owned-habitas tint is lerped from the player's base color
+# toward white — matches map_renderer.gd's OWNED_BLEND exactly (0.30: mostly
+# the player's own color, lightly whitened so the art's shading still reads).
+OWNED_BLEND = 0.30
 
 
-def _load_bot_sprite(bot_type: str) -> "pygame.Surface | None":
-    fname = f"bot_{bot_type.lower()}.png"
-    path = os.path.join(ASSETS_DIR, "bots", fname)
+def _load(rel_path: str) -> "pygame.Surface | None":
+    path = os.path.join(ASSETS_DIR, rel_path)
     if not os.path.exists(path):
         return None
     return pygame.image.load(path).convert_alpha()
+
+
+def _load_bot_sprite(bot_type: str) -> "pygame.Surface | None":
+    return _load(os.path.join("bots", f"bot_{bot_type.lower()}.png"))
 
 
 class PlaybackViewer:
@@ -56,6 +66,24 @@ class PlaybackViewer:
             self.map = MapData(40, 40)  # fallback blank map so the viewer doesn't crash
 
         self.bot_sprites: dict[str, "pygame.Surface | None"] = {}
+
+        # Same tile/marker textures the map editor uses (map_canvas_renderer.py)
+        # and the Godot original's map_renderer.gd used — this viewer used to
+        # draw flat DENSITY_COLOR rects and procedural circles instead of any
+        # of the real art, even though it was sitting right here in assets/.
+        self.terrain_textures = {
+            Density.LOW: _load("tiles/tile_low.png"),
+            Density.MEDIUM: _load("tiles/tile_medium.png"),
+            Density.HIGH: _load("tiles/tile_high.png"),
+            Density.BONE: _load("tiles/tile_bone.png"),
+        }
+        self.stream_h_texture = _load("tiles/tile_stream_h.png")
+        self.stream_v_texture = _load("tiles/tile_stream_v.png")
+        self.habitas_neutral_texture = _load("markers/habitas_neutral.png")
+        self.habitas_owned_texture = _load("markers/habitas_owned.png")
+        self.azn_texture = _load("markers/azn_node.png")
+        self._scaled_cache: dict[tuple, "pygame.Surface"] = {}
+        self._owned_tint_cache: dict[tuple, "pygame.Surface"] = {}
 
         self.current_frame = 0
         self.playing = False
@@ -233,6 +261,26 @@ class PlaybackViewer:
         sy = self.canvas_rect.y + y * size - self.scroll_y
         return pygame.Rect(int(sx), int(sy), int(size) + 1, int(size) + 1)
 
+    def _scaled(self, tex: "pygame.Surface", size: int) -> "pygame.Surface":
+        key = (id(tex), size)
+        cached = self._scaled_cache.get(key)
+        if cached is None or cached.get_width() != size:
+            cached = pygame.transform.smoothscale(tex, (size, size))
+            self._scaled_cache[key] = cached
+        return cached
+
+    def _owned_tinted(self, size: int, tint: tuple[int, int, int]) -> "pygame.Surface | None":
+        if self.habitas_owned_texture is None:
+            return None
+        key = (size, tint)
+        cached = self._owned_tint_cache.get(key)
+        if cached is not None:
+            return cached
+        tinted = self._scaled(self.habitas_owned_texture, size).copy()
+        tinted.fill((*tint, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        self._owned_tint_cache[key] = tinted
+        return tinted
+
     def _draw_map(self, surface: "pygame.Surface") -> None:
         # Grid lines go on a separate SRCALPHA overlay blitted once at the
         # end — pygame.draw.rect ignores alpha on the main (non-alpha)
@@ -247,15 +295,46 @@ class PlaybackViewer:
                     continue
                 if r.bottom < self.canvas_rect.top or r.top > self.canvas_rect.bottom:
                     continue
-                pygame.draw.rect(surface, DENSITY_COLOR[cell["density"]], r)
-                if cell["stream_dir"] != StreamDir.NONE:
-                    self._draw_stream_arrow(surface, r, cell["stream_dir"])
+
+                if cell["stream_dir"] == StreamDir.NONE:
+                    tex = self.terrain_textures.get(cell["density"])
+                    if tex:
+                        surface.blit(self._scaled(tex, r.width), r.topleft)
+                    else:
+                        pygame.draw.rect(surface, DENSITY_COLOR[cell["density"]], r)
+                else:
+                    self._draw_stream_cell(surface, r, cell["stream_dir"])
+
                 overlay_r = pygame.Rect(r.x - self.canvas_rect.x, r.y - self.canvas_rect.y, r.width, r.height)
                 pygame.draw.rect(grid_overlay, GRID_COLOR, overlay_r, width=1)
 
         surface.blit(grid_overlay, self.canvas_rect.topleft)
 
-    def _draw_stream_arrow(self, surface, r: pygame.Rect, direction: StreamDir) -> None:
+    def _draw_stream_cell(self, surface, r: pygame.Rect, direction: StreamDir) -> None:
+        # Same texture + flip logic as the map editor's
+        # MapCanvasRenderer._draw_stream_cell, and the same two-step
+        # "biological texture, then a crisp procedural arrow on top" as
+        # the Godot original's map_renderer.gd — the arrow alone (the old
+        # behavior here) skipped the actual stream art entirely.
+        if direction in (StreamDir.EAST, StreamDir.WEST):
+            tex = self.stream_h_texture
+            if tex:
+                scaled = self._scaled(tex, r.width)
+                if direction == StreamDir.WEST:
+                    scaled = pygame.transform.flip(scaled, True, False)
+                surface.blit(scaled, r.topleft)
+            else:
+                pygame.draw.rect(surface, (102, 51, 51), r)
+        else:
+            tex = self.stream_v_texture
+            if tex:
+                scaled = self._scaled(tex, r.width)
+                if direction == StreamDir.NORTH:
+                    scaled = pygame.transform.flip(scaled, False, True)
+                surface.blit(scaled, r.topleft)
+            else:
+                pygame.draw.rect(surface, (102, 51, 51), r)
+
         vec = {
             StreamDir.NORTH: pygame.Vector2(0, -1), StreamDir.SOUTH: pygame.Vector2(0, 1),
             StreamDir.EAST: pygame.Vector2(1, 0), StreamDir.WEST: pygame.Vector2(-1, 0),
@@ -271,11 +350,25 @@ class PlaybackViewer:
         pygame.draw.line(surface, (255, 255, 255), tip, head_base - perp, 2)
 
     def _draw_habitas(self, surface, frame: dict) -> None:
+        # Same texture choice as map_renderer.gd: the neutral marker for an
+        # unclaimed point, or the owned marker tinted toward the owning
+        # player's color (habitas_owned.png is a near-white base texture
+        # specifically designed for this multiply-tint, unlike the bot
+        # sprites' own multi-color art).
         for hp in frame["habitas_points"]:
             r = self._cell_rect(hp["pos"][0], hp["pos"][1])
             owner = hp["owner"]
-            color = PLAYER_COLORS[owner % len(PLAYER_COLORS)] if owner >= 0 else (255, 215, 0)
-            pygame.draw.circle(surface, color, r.center, r.width // 2 - 1, width=3)
+            if owner >= 0:
+                base = PLAYER_COLORS[owner % len(PLAYER_COLORS)]
+                tint = tuple(int(c + (255 - c) * OWNED_BLEND) for c in base)
+                tex = self._owned_tinted(r.width, tint)
+            else:
+                tex = self._scaled(self.habitas_neutral_texture, r.width) if self.habitas_neutral_texture else None
+            if tex:
+                surface.blit(tex, r.topleft)
+            else:
+                color = PLAYER_COLORS[owner % len(PLAYER_COLORS)] if owner >= 0 else (255, 215, 0)
+                pygame.draw.circle(surface, color, r.center, r.width // 2 - 1, width=3)
             if owner >= 0 and hp["azn"] > 0:
                 font = get_font(10)
                 label = font.render(str(hp["azn"]), True, (255, 255, 255))
@@ -286,7 +379,10 @@ class PlaybackViewer:
             if node["qty"] <= 0:
                 continue
             r = self._cell_rect(node["pos"][0], node["pos"][1])
-            pygame.draw.circle(surface, (230, 200, 60), r.center, max(3, r.width // 4))
+            if self.azn_texture:
+                surface.blit(self._scaled(self.azn_texture, r.width), r.topleft)
+            else:
+                pygame.draw.circle(surface, (230, 200, 60), r.center, max(3, r.width // 4))
 
     def _draw_bots(self, surface, frame: dict) -> None:
         for bot in frame["bots"]:
