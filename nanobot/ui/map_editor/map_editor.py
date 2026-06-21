@@ -14,6 +14,7 @@ import pygame
 
 from nanobot.core import map_loader
 from nanobot.core.map_data import Density, MapData, StreamDir
+from nanobot.ui import icons
 from nanobot.ui.map_editor import map_document_ops as ops
 from nanobot.ui.map_editor.map_canvas_renderer import CELL_SIZE, MapCanvasRenderer
 from nanobot.ui.map_editor.map_editor_sidebar import MapEditorSidebar
@@ -29,8 +30,20 @@ from nanobot.ui.map_editor.tools.zone_tool import ZoneTool
 from nanobot.ui.widgets import Button, draw_text
 
 MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 0.5, 3.0, 0.1
-STATUS_BAR_HEIGHT = 26
+STATUS_BAR_HEIGHT = 44
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
+
+# Tools that aren't "terrain" or "stream" (which get a live tile/stream
+# texture preview instead — see _draw_active_tool_indicator) show one of
+# these fixed icons.
+_TOOL_ICON_FNS = {
+    "pan": icons.pan_icon,
+    "edit": icons.edit_icon,
+    "delete": icons.delete_icon,
+    "habitas": icons.habitas_icon,
+    "azn": icons.azn_icon,
+    "zone": icons.zone_icon,
+}
 
 _cursor_setting_broken = False
 
@@ -78,6 +91,10 @@ class MapEditorScreen:
 
         self.status_text = ""
         self.modal: dict | None = None
+        self.on_back_to_menu = None  # callback(), set by main.py — see App._open_editor
+
+        self.menu_btn = Button((screen_size[0] - 110, 6, 100, 32), "Menu",
+                                icon=icons.back_arrow_icon(16), on_click=self._fire_back_to_menu)
 
         self.tools = {
             "terrain": TerrainTool(self),
@@ -109,6 +126,11 @@ class MapEditorScreen:
         self.screen_size = screen_size
         self.sidebar.resize(screen_size)
         self._recompute_canvas_rect()
+        self.menu_btn.rect.x = screen_size[0] - 110
+
+    def _fire_back_to_menu(self) -> None:
+        if self.on_back_to_menu:
+            self.on_back_to_menu()
 
     def _recompute_canvas_rect(self) -> None:
         from nanobot.ui.map_editor.map_editor_sidebar import PANEL_WIDTH
@@ -220,6 +242,9 @@ class MapEditorScreen:
             self._handle_modal_event(event)
             return
 
+        if self.menu_btn.handle_event(event):
+            return
+
         if self.sidebar.handle_event(event):
             return
 
@@ -319,13 +344,45 @@ class MapEditorScreen:
                                 self.scroll_x, self.scroll_y, self.brush_cursor_pos,
                                 selection, self.azn_hover_index, self.preview_rect)
 
-        pygame.draw.rect(surface, (20, 20, 20), (0, 0, self.canvas_rect.width, STATUS_BAR_HEIGHT))
-        draw_text(surface, self.status_text, (8, 6), size=12)
-
+        self._draw_top_bar(surface)
         self.sidebar.draw(surface)
+
+        # Drawn last, after the sidebar, so it's never painted over —
+        # confirmed this was a real bug: the sidebar is drawn after the top
+        # bar and is fully opaque, so a button positioned at the screen's
+        # right edge (sitting above the sidebar, matching where the
+        # playback viewer and tournament screen put their own back
+        # buttons) was being completely hidden underneath it.
+        self.menu_btn.draw(surface)
 
         if self.modal is not None:
             self._draw_modal(surface)
+
+    def _draw_top_bar(self, surface: "pygame.Surface") -> None:
+        pygame.draw.rect(surface, (20, 20, 20), (0, 0, self.canvas_rect.width, STATUS_BAR_HEIGHT))
+
+        # The active tool/tile indicator: what you click will paint *this*,
+        # shown as the real texture for Terrain/Stream (not just a color
+        # swatch) and as the matching icon for every other tool, so the
+        # current state is glanceable at the top instead of only visible
+        # as a highlighted button somewhere in the sidebar.
+        icon_box = pygame.Rect(8, 6, 32, 32)
+        pygame.draw.rect(surface, (45, 48, 58), icon_box, border_radius=4)
+        pygame.draw.rect(surface, (80, 84, 96), icon_box, width=1, border_radius=4)
+
+        if self.active_tool_name == "terrain":
+            tex = self.renderer.terrain_textures.get(self.selected_density)
+            if tex:
+                surface.blit(pygame.transform.smoothscale(tex, (28, 28)), (icon_box.x + 2, icon_box.y + 2))
+        elif self.active_tool_name == "stream":
+            preview_rect = pygame.Rect(icon_box.x + 2, icon_box.y + 2, 28, 28)
+            self.renderer._draw_stream_cell(surface, preview_rect, self.selected_stream_dir)
+        else:
+            icon_fn = _TOOL_ICON_FNS.get(self.active_tool_name)
+            if icon_fn:
+                surface.blit(icon_fn(28), (icon_box.x + 2, icon_box.y + 2))
+
+        draw_text(surface, self.status_text, (icon_box.right + 10, 16), size=12)
 
     def _draw_modal(self, surface: "pygame.Surface") -> None:
         overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)

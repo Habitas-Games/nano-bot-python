@@ -63,7 +63,15 @@ class Button:
         pygame.draw.rect(surface, bg, self.rect, border_radius=4)
         pygame.draw.rect(surface, (20, 22, 30), self.rect, width=1, border_radius=4)
 
-        if self.icon:
+        if self.icon and self.text:
+            font = get_font(13)
+            label = font.render(self.text, True, fg)
+            gap = 6
+            total_w = self.icon.get_width() + gap + label.get_width()
+            left = self.rect.centerx - total_w // 2
+            surface.blit(self.icon, self.icon.get_rect(centery=self.rect.centery, left=left))
+            surface.blit(label, label.get_rect(centery=self.rect.centery, left=left + self.icon.get_width() + gap))
+        elif self.icon:
             icon_rect = self.icon.get_rect(center=self.rect.center)
             surface.blit(self.icon, icon_rect)
         elif self.text:

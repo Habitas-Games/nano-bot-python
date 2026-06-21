@@ -14,6 +14,7 @@ import pygame
 from nanobot.core.map_data import Density, MapData, StreamDir
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.match_log import MatchLog
+from nanobot.ui import icons
 from nanobot.ui.widgets import Button, draw_text, get_font
 
 CELL_SIZE = 14
@@ -27,6 +28,10 @@ DENSITY_COLOR = {
     Density.HIGH: (70, 160, 80),
     Density.BONE: (15, 15, 15),
 }
+# Same translucent warm-dark grid as the map editor's canvas (see
+# map_canvas_renderer.GRID_COLOR) instead of flat opaque black, for visual
+# consistency between editing and watching the same tissue.
+GRID_COLOR = (25, 12, 12, 70)
 PLAYER_COLORS = [(64, 140, 255), (255, 77, 64), (60, 220, 110), (255, 215, 40)]
 SPEEDS = [0.25, 0.5, 1.0, 2.0, 4.0]
 
@@ -83,6 +88,11 @@ class PlaybackViewer:
         self.screen_size = screen_size
         self._recompute_canvas_rect()
         self._build_controls()
+        # _build_controls() rebuilds btn_play from scratch with its default
+        # "play" icon — restore the icon that actually matches self.playing
+        # so resizing mid-playback doesn't silently flip the button back to
+        # showing "play" while playback keeps running.
+        self.btn_play.icon = icons.pause_icon(22) if self.playing else icons.play_icon(22)
 
     def _recompute_canvas_rect(self) -> None:
         w = self.screen_size[0] - SIDEBAR_WIDTH
@@ -90,13 +100,19 @@ class PlaybackViewer:
         self.canvas_rect = pygame.Rect(0, CONTROL_BAR_HEIGHT, max(0, w), max(0, h))
 
     def _build_controls(self) -> None:
-        y = 10
-        self.btn_play = Button((10, y, 70, 30), "Play", on_click=self._toggle_play)
-        self.btn_step_back = Button((90, y, 30, 30), "<", on_click=lambda: self._step(-1))
-        self.btn_step_fwd = Button((125, y, 30, 30), ">", on_click=lambda: self._step(1))
-        self.btn_speed_down = Button((165, y, 30, 30), "-", on_click=lambda: self._change_speed(-1))
-        self.btn_speed_up = Button((280, y, 30, 30), "+", on_click=lambda: self._change_speed(1))
-        self.btn_back = Button((self.screen_size[0] - 110, y, 100, 30), "Back to Menu", on_click=self._back)
+        y = 9
+        size = 32
+        self.btn_play = Button((10, y, size, size), "", icon=icons.play_icon(22), on_click=self._toggle_play)
+        x = 10 + size + 6
+        self.btn_step_back = Button((x, y, size, size), "", icon=icons.step_back_icon(22), on_click=lambda: self._step(-1))
+        x += size + 4
+        self.btn_step_fwd = Button((x, y, size, size), "", icon=icons.step_forward_icon(22), on_click=lambda: self._step(1))
+        x += size + 14
+        self.btn_speed_down = Button((x, y, size, size), "", icon=icons.speed_down_icon(22), on_click=lambda: self._change_speed(-1))
+        x += size + 50  # leaves room for the "1.0x" label drawn between the buttons
+        self.btn_speed_up = Button((x, y, size, size), "", icon=icons.speed_up_icon(22), on_click=lambda: self._change_speed(1))
+        self.btn_back = Button((self.screen_size[0] - 130, y, 120, size), "Back to Menu",
+                                icon=icons.back_arrow_icon(16), on_click=self._back)
         self.controls = [self.btn_play, self.btn_step_back, self.btn_step_fwd,
                           self.btn_speed_down, self.btn_speed_up, self.btn_back]
 
@@ -106,7 +122,7 @@ class PlaybackViewer:
 
     def _toggle_play(self) -> None:
         self.playing = not self.playing
-        self.btn_play.text = "Pause" if self.playing else "Play"
+        self.btn_play.icon = icons.pause_icon(22) if self.playing else icons.play_icon(22)
 
     def _step(self, delta: int) -> None:
         if self.log is None:
@@ -129,7 +145,7 @@ class PlaybackViewer:
                 self.current_frame += 1
             else:
                 self.playing = False
-                self.btn_play.text = "Play"
+                self.btn_play.icon = icons.play_icon(22)
                 break
 
     def handle_event(self, event: "pygame.event.Event") -> None:
@@ -185,7 +201,14 @@ class PlaybackViewer:
         for btn in self.controls:
             btn.draw(surface)
         speed_label = f"{SPEEDS[self.speed_index]}x"
-        draw_text(surface, speed_label, (200, 18), size=14)
+        # Positioned relative to the actual button rects, not hardcoded
+        # coordinates that would silently drift out of sync the next time
+        # the buttons either side of it move (the same bug class fixed in
+        # the map editor sidebar's header labels).
+        label_center_x = (self.btn_speed_down.rect.right + self.btn_speed_up.rect.left) // 2
+        font = get_font(14)
+        label_surf = font.render(speed_label, True, (215, 218, 228))
+        surface.blit(label_surf, (label_center_x - label_surf.get_width() // 2, self.btn_speed_down.rect.y + 8))
 
         if self.log is None or not self.log.frames:
             draw_text(surface, "No replay loaded / empty match log", (20, 70), size=16, color=(220, 100, 100))
@@ -211,6 +234,11 @@ class PlaybackViewer:
         return pygame.Rect(int(sx), int(sy), int(size) + 1, int(size) + 1)
 
     def _draw_map(self, surface: "pygame.Surface") -> None:
+        # Grid lines go on a separate SRCALPHA overlay blitted once at the
+        # end — pygame.draw.rect ignores alpha on the main (non-alpha)
+        # surface and would draw GRID_COLOR fully opaque otherwise.
+        grid_overlay = pygame.Surface(self.canvas_rect.size, pygame.SRCALPHA)
+
         for y in range(self.map.height):
             for x in range(self.map.width):
                 cell = self.map._cells[y * self.map.width + x]
@@ -222,7 +250,10 @@ class PlaybackViewer:
                 pygame.draw.rect(surface, DENSITY_COLOR[cell["density"]], r)
                 if cell["stream_dir"] != StreamDir.NONE:
                     self._draw_stream_arrow(surface, r, cell["stream_dir"])
-                pygame.draw.rect(surface, (0, 0, 0), r, width=1)
+                overlay_r = pygame.Rect(r.x - self.canvas_rect.x, r.y - self.canvas_rect.y, r.width, r.height)
+                pygame.draw.rect(grid_overlay, GRID_COLOR, overlay_r, width=1)
+
+        surface.blit(grid_overlay, self.canvas_rect.topleft)
 
     def _draw_stream_arrow(self, surface, r: pygame.Rect, direction: StreamDir) -> None:
         vec = {

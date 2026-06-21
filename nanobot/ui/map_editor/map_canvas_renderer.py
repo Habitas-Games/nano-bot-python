@@ -14,7 +14,11 @@ from nanobot.ui.widgets import get_font
 
 CELL_SIZE = 16
 STREAM_COLOR = (179, 64, 64)
-GRID_COLOR = (0, 0, 0)
+# A flat opaque black grid read as graph paper laid over the tissue
+# rather than texture seams within it — softened to a translucent, warm
+# dark tone so it still marks cell boundaries (needed for precise
+# editing) without fighting the tissue palette's reds/greens/purples.
+GRID_COLOR = (25, 12, 12, 70)
 BRUSH_COLOR = (255, 255, 255)
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
@@ -74,7 +78,16 @@ class MapCanvasRenderer:
         return pygame.Rect(int(sx), int(sy), math.ceil(size), math.ceil(size))
 
     def _draw_cells(self, surface, m: MapData, canvas_rect, zoom, scroll_x, scroll_y, brush_cursor_pos) -> None:
-        size = CELL_SIZE * zoom
+        # Grid lines are drawn onto a separate SRCALPHA overlay and blitted
+        # once at the end, rather than via pygame.draw.rect(..., GRID_COLOR)
+        # directly on the main surface per cell — confirmed pygame.draw.rect
+        # ignores the alpha channel and draws fully opaque on a surface
+        # without its own per-pixel alpha, so a translucent grid color was
+        # silently being drawn as flat opaque instead, however dark the RGB
+        # happened to be. One shared overlay also avoids 6,400+ individual
+        # alpha-surface allocations for an 80x80 map.
+        grid_overlay = pygame.Surface(canvas_rect.size, pygame.SRCALPHA)
+
         for y in range(m.height):
             for x in range(m.width):
                 cell = m._cells[y * m.width + x]
@@ -96,7 +109,10 @@ class MapCanvasRenderer:
                 if (x, y) == tuple(brush_cursor_pos):
                     pygame.draw.rect(surface, BRUSH_COLOR, r, width=2)
 
-                pygame.draw.rect(surface, GRID_COLOR, r, width=1)
+                overlay_r = pygame.Rect(r.x - canvas_rect.x, r.y - canvas_rect.y, r.width, r.height)
+                pygame.draw.rect(grid_overlay, GRID_COLOR, overlay_r, width=1)
+
+        surface.blit(grid_overlay, canvas_rect.topleft)
 
     def _draw_stream_cell(self, surface, r: pygame.Rect, stream_dir: StreamDir) -> None:
         if stream_dir in (StreamDir.EAST, StreamDir.WEST):

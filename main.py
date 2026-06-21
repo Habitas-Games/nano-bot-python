@@ -41,6 +41,7 @@ class App:
     def _open_editor(self) -> None:
         if self.editor is None:
             self.editor = MapEditorScreen(self.screen.get_size())
+            self.editor.on_back_to_menu = self._back_to_menu
         self.current = self.editor
 
     def _open_playback(self, replay_path: str) -> None:
@@ -77,7 +78,16 @@ class App:
                     if self.tournament:
                         self.tournament.resize(size)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and self.current is not self.menu:
-                    self.current = self.menu
+                    # If the current screen has an open modal (e.g. the map
+                    # editor's save/load dialogs), let it handle Escape
+                    # itself first — its own modal-cancel logic should
+                    # dismiss the modal, not jump straight past it to the
+                    # main menu. Only screens with no modal open treat
+                    # Escape as "go back".
+                    if getattr(self.current, "modal", None) is not None:
+                        self.current.handle_event(event)
+                    else:
+                        self.current = self.menu
                 else:
                     self.current.handle_event(event)
 

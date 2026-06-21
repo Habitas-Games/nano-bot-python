@@ -8,6 +8,7 @@ from __future__ import annotations
 import pygame
 
 from nanobot.core.map_data import Density, StreamDir
+from nanobot.ui import icons
 from nanobot.ui.widgets import Button, ButtonGroup, draw_text
 
 PANEL_WIDTH = 250
@@ -35,20 +36,44 @@ class MapEditorSidebar:
         self.undo_btn: Button | None = None
         self._action_buttons: list[Button] = []
 
+        # Header y-positions, recorded while _build() lays out the actual
+        # buttons rather than recomputed by hand in draw() from a parallel
+        # set of arithmetic — those two used to drift out of sync the
+        # moment either one changed without the other being updated too.
+        self._headers: list[tuple[str, int]] = []
+
         self._build()
 
     def resize(self, screen_size: tuple[int, int]) -> None:
         screen_width, screen_height = screen_size
+        old_x = self.rect.x
         self.rect.x = screen_width - PANEL_WIDTH
         self.rect.height = screen_height
 
+        # Shift every button by the same delta rather than rebuilding from
+        # scratch — a full _build() would reset whichever density/stream/
+        # tool button is currently pressed back to the hardcoded defaults,
+        # discarding the user's actual selection. Confirmed this was a real,
+        # visible bug before this fix: after widening the window, buttons
+        # stayed frozen at their old x position while the panel background
+        # (drawn from self.rect directly) moved to track the new width.
+        dx = self.rect.x - old_x
+        if dx:
+            for group in (self.terrain_group, self.stream_group, self.tool_group):
+                for btn in group.buttons:
+                    btn.rect.x += dx
+            for btn in self._action_buttons:
+                btn.rect.x += dx
+
     def _build(self) -> None:
+        self._headers = []
         x = self.rect.x + PADDING
         y = 10
 
         y += 24  # title
 
         # Terrain
+        self._headers.append(("Terrain", y))
         y += 18
         size = 48
         densities = [Density.LOW, Density.MEDIUM, Density.HIGH, Density.BONE]
@@ -69,6 +94,7 @@ class MapEditorSidebar:
         y += size + 10
 
         # Streams
+        self._headers.append(("Stream Direction", y))
         y += 18
         dirs = [StreamDir.NORTH, StreamDir.SOUTH, StreamDir.EAST, StreamDir.WEST]
         dir_labels = {StreamDir.NORTH: "^", StreamDir.SOUTH: "v", StreamDir.EAST: ">", StreamDir.WEST: "<"}
@@ -81,24 +107,37 @@ class MapEditorSidebar:
             self.stream_group.add(btn)
         y += size + 10
 
-        # Elements
+        # Elements — icon buttons (tooltips carry the name) instead of
+        # full-width text rows, so the row of tools reads at a glance
+        # instead of as a stack of labels you have to read one by one.
+        self._headers.append(("Elements", y))
         y += 18
-        for label, tool_name in [("Place Habitas", "habitas"), ("Place AZN", "azn"), ("Place Zone", "zone")]:
-            btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
-                         on_click=lambda t=tool_name: self._select_tool(t))
+        for i, (icon_fn, tool_name, name) in enumerate([
+            (icons.habitas_icon, "habitas", "Place Habitas"),
+            (icons.azn_icon, "azn", "Place AZN"),
+            (icons.zone_icon, "zone", "Place Zone"),
+        ]):
+            bx = x + i * (size + 2)
+            btn = Button((bx, y, size, size), "", on_click=lambda t=tool_name: self._select_tool(t),
+                         tooltip=name, icon=icon_fn(28))
             self.tool_group.add(btn)
             self._tool_buttons_by_name[tool_name] = btn
-            y += ROW_HEIGHT + 4
-        y += 6
+        y += size + 10
 
         # Tools
+        self._headers.append(("Tools", y))
         y += 18
-        for label, tool_name in [("Pan", "pan"), ("Edit", "edit"), ("Delete", "delete")]:
-            btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
-                         on_click=lambda t=tool_name: self._select_tool(t))
+        for i, (icon_fn, tool_name, name) in enumerate([
+            (icons.pan_icon, "pan", "Pan"),
+            (icons.edit_icon, "edit", "Edit"),
+            (icons.delete_icon, "delete", "Delete"),
+        ]):
+            bx = x + i * (size + 2)
+            btn = Button((bx, y, size, size), "", on_click=lambda t=tool_name: self._select_tool(t),
+                         tooltip=name, icon=icon_fn(28))
             self.tool_group.add(btn)
             self._tool_buttons_by_name[tool_name] = btn
-            y += ROW_HEIGHT + 4
+        y += size + 10
         for label, attr in [("Load", "on_load"), ("Save", "on_save"), ("Clear Map", "on_clear")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
                          on_click=lambda a=attr: self._fire(a))
@@ -107,6 +146,7 @@ class MapEditorSidebar:
         y += 6
 
         # History
+        self._headers.append(("History", y))
         y += 18
         self.undo_btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), "Undo",
                                 on_click=lambda: self._fire("on_undo"))
@@ -165,20 +205,11 @@ class MapEditorSidebar:
 
         tx = self.rect.x + PADDING
         draw_text(surface, "Map Editor", (tx, 8), size=16, color=(235, 235, 235))
-        draw_text(surface, "Terrain", (tx, 36), size=11, color=(160, 165, 180))
+        for label, header_y in self._headers:
+            draw_text(surface, label, (tx, header_y), size=11, color=(160, 165, 180))
+
         self.terrain_group.draw(surface)
-        draw_text(surface, "Stream Direction", (tx, 36 + 18 + 50 + 10), size=11, color=(160, 165, 180))
         self.stream_group.draw(surface)
-
-        y_elements_header = 36 + 18 + 50 + 10 + 18 + 50 + 10
-        draw_text(surface, "Elements", (tx, y_elements_header), size=11, color=(160, 165, 180))
-
-        y_tools_header = y_elements_header + 18 + 3 * (ROW_HEIGHT + 4) + 6
-        draw_text(surface, "Tools", (tx, y_tools_header), size=11, color=(160, 165, 180))
-
-        y_history_header = y_tools_header + 18 + 6 * (ROW_HEIGHT + 4) + 6
-        draw_text(surface, "History", (tx, y_history_header), size=11, color=(160, 165, 180))
-
         self.tool_group.draw(surface)
         for btn in self._action_buttons:
             btn.draw(surface)
