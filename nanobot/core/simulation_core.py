@@ -314,13 +314,39 @@ class SimulationCore:
         return living <= 1
 
     def _determine_winner(self) -> int:
-        best_id = 0
-        best_score = -1
-        for pid, score in self._scores.items():
-            if score > best_score:
-                best_score = score
-                best_id = pid
-        return best_id
+        """Highest score wins; ties broken per requirements.md SCO-04:
+        (1) bots still alive, (2) AZN collected. ("(3) turns elapsed" from
+        the spec is a single value for the whole match, not one per
+        player, so it can never actually discriminate between two tied
+        players — there is no way to "implement" it as a real tie-break,
+        so it's omitted here rather than coded as a no-op.)
+
+        Previously this just returned whichever player had the
+        first-seen highest score, defaulting to player 0 on any tie —
+        identical in the Godot original, which has the same gap between
+        this docstring's spec and what the code did. Confirmed this
+        wasn't a hypothetical: a "do nothing" strategy at 0 points used
+        to literally beat another "do nothing" strategy whenever it
+        happened to be listed first, with no regard for which one still
+        had bots standing."""
+        best_score = max(self._scores.values(), default=0)
+        tied = [pid for pid, score in self._scores.items() if score == best_score]
+        if len(tied) == 1:
+            return tied[0]
+
+        alive_counts = {
+            pid: sum(1 for b in self._bots if b.owner_id == pid and b.is_alive)
+            for pid in tied
+        }
+        most_alive = max(alive_counts.values())
+        tied = [pid for pid in tied if alive_counts[pid] == most_alive]
+        if len(tied) == 1:
+            return tied[0]
+
+        bank_counts = {pid: self._player_azn_bank.get(pid, 0) for pid in tied}
+        most_banked = max(bank_counts.values())
+        tied = [pid for pid in tied if bank_counts[pid] == most_banked]
+        return tied[0]  # still tied after both criteria — first player_id, same as before
 
     # --- action handlers ---
 

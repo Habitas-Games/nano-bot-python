@@ -400,10 +400,46 @@ class TestEndConditionsAndWinner:
         sim._scores = {0: 10, 1: 50}
         assert sim._determine_winner() == 1
 
-    def test_winner_tie_breaks_to_first_player_encountered(self):
+    def test_fully_tied_match_falls_back_to_first_player(self):
+        # Both players have equal score, equal bots-alive (1 each, from
+        # make_sim()'s default NanoAI spawn), and equal AZN bank (both
+        # default to the map's starting_azn) — every tie-break level in
+        # SCO-04 is exhausted, so this is the one case where "first
+        # player_id" is still the correct, documented outcome.
         sim = make_sim()
         sim._scores = {0: 30, 1: 30}
         assert sim._determine_winner() == 0
+
+    def test_tied_score_broken_by_bots_still_alive(self):
+        # requirements.md SCO-04: equal scores, tie-break 1 is "bots still
+        # alive". Previously _determine_winner() never looked at this at
+        # all — a player with zero bots left could still "win" a tied
+        # score simply by being listed first.
+        sim = make_sim()
+        sim._scores = {0: 20, 1: 20}
+        sim.spawn_bot(0, "NanoCollector", (1, 1))  # player 0: 2 bots alive (NanoAI + this)
+        sim._bots[1].is_alive = False  # player 1: 0 bots alive (its only NanoAI just died)
+        assert sim._determine_winner() == 0
+
+    def test_tied_score_and_alive_count_broken_by_azn_banked(self):
+        # Tie-break 1 (bots alive) is also equal here, so it must fall
+        # through to tie-break 2 (AZN collected / banked).
+        sim = make_sim()
+        sim._scores = {0: 20, 1: 20}
+        sim._player_azn_bank[0] = 50
+        sim._player_azn_bank[1] = 200
+        assert sim._determine_winner() == 1
+
+    def test_winner_with_no_tie_ignores_tie_break_criteria_entirely(self):
+        # A clear score leader wins regardless of bots-alive/bank — make
+        # sure the tie-break machinery doesn't accidentally kick in when
+        # there's no tie to break.
+        sim = make_sim()
+        sim._scores = {0: 100, 1: 5}
+        sim._bots[0].is_alive = False  # player 0 has fewer bots and less bank...
+        sim._player_azn_bank[0] = 0
+        sim._player_azn_bank[1] = 999
+        assert sim._determine_winner() == 0  # ...but still wins outright on score alone
 
     def test_three_player_match_ends_when_two_eliminated(self):
         sim = make_sim(players=3)
