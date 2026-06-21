@@ -130,3 +130,15 @@ Checked what happens with a missing or corrupted `data/bot_types.json` (`get_typ
 2. **Syntactically-valid JSON that isn't an object (e.g. a bare array) parsed without error but crashed on first real use** — `get_type()`'s `_data.get(...)` raises `AttributeError` on a list. Lower-probability than a typo causing a parse error, but still a reachable crash from a malformed data file. Fixed by checking `isinstance(parsed, dict)` after a successful parse and treating a wrong shape the same as a parse failure.
 
 7 new tests (`tests/test_bot_type_registry.py`), 252 total. Full regression sweep green, including confirming the real `data/bot_types.json` still loads correctly (this is the one file in the whole fix where "does the unmodified real data still work" needed explicit checking, since every other fix in this version dealt with hypothetical malformed input, not the actual shipped data file).
+
+---
+
+## Follow-up round 6: audited every JSON-loading call site for the same pattern
+
+Finding the same crash shape twice in a row (`map_loader`, then `bot_type_registry`) was a signal to stop finding these one at a time and check systematically: `grep -rn "json\.load\b\|json\.loads\b" nanobot/` turned up exactly three call sites total. `map_loader.py` and `bot_type_registry.py` were already fixed; `match_log.py`'s `load_from_file()` was the one left unaudited.
+
+It already caught `JSONDecodeError` correctly (no gap there), but had the same "valid JSON, wrong shape" hole as `bot_type_registry`: a bare JSON array or string parses without error, then every `data.get(...)` call crashes with `AttributeError` on first use. **This one matters more than most of this version's other findings** — `MatchLog.load_from_file()` sits directly on the path a user hits by opening a corrupted or incomplete replay file through the real `PlaybackViewer` UI, not just from hand-edited input. Fixed the same way as `bot_type_registry`: check `isinstance(data, dict)` after a successful parse, treat a wrong shape as a load failure.
+
+Verified through the actual UI, not just the unit level: constructed a `PlaybackViewer` pointed at a corrupted (wrong-shape) replay file and confirmed `draw()` shows its existing "No replay loaded" fallback instead of crashing — `viewer.draw()` already had that fallback built in from v0.0.1, it just never got reached safely before this fix because the crash happened one level down, inside `load_from_file()` itself, before the viewer's own None-check ever ran.
+
+This module had zero unit test coverage before this round (`tests/test_match_log.py` is new). 8 new tests, 260 total. Full regression sweep green.

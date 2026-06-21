@@ -56,6 +56,16 @@ class MatchLog:
             except json.JSONDecodeError as e:
                 print(f"MatchLog: JSON parse error in {path}: {e}")
                 return None
+        if not isinstance(data, dict):
+            # Syntactically valid JSON that isn't an object (e.g. a bare
+            # array) parses without error but every data.get(...) call
+            # below would crash with an AttributeError on first use. This
+            # path matters more here than in most of this codebase's other
+            # loaders: it's reachable directly from the playback viewer
+            # opening a corrupted/incomplete replay file through the real
+            # UI, not just from hand-edited input.
+            print(f"MatchLog: expected a JSON object in {path}, got {type(data).__name__}")
+            return None
         log = MatchLog()
         log.map_name = data.get("map_name", "")
         log.player_strategies = data.get("player_strategies", [])
