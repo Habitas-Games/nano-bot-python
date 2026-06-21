@@ -28,12 +28,22 @@ class MatchLog:
             "events": list(events),
         })
 
-    def save_to_file(self, path: str) -> None:
+    def save_to_file(self, path: str) -> bool:
         directory = os.path.dirname(path)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent="\t")
+        try:
+            with open(path, "w") as f:
+                json.dump(self.to_dict(), f, indent="\t")
+        except OSError as e:
+            # Confirmed reachable, not hypothetical: TournamentRunner calls
+            # this from a background thread, and an unhandled OSError here
+            # (disk full, permission denied) used to propagate straight out
+            # of that thread — see tournament_runner.py's _run_one_match
+            # fix. Matches map_loader.save_to_file's existing pattern.
+            print(f"MatchLog: could not save to {path}: {e}")
+            return False
+        return True
 
     def to_dict(self) -> dict:
         return {

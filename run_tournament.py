@@ -48,7 +48,7 @@ def main() -> int:
     runner.start(strategy_paths, map_paths)
     runner.wait()
 
-    leaderboard.save_to_file(args.out)
+    saved = leaderboard.save_to_file(args.out)
 
     print("\n=== Leaderboard ===")
     for i, entry in enumerate(leaderboard.get_sorted(), start=1):
@@ -56,7 +56,11 @@ def main() -> int:
         print(f"{i}. {entry['name']}{dq_flag} — {entry['wins']}W {entry['losses']}L "
               f"{entry['draws']}D, {entry['points']} pts over {entry['matches']} matches")
 
-    print(f"\nSaved leaderboard to {args.out}")
+    if saved:
+        print(f"\nSaved leaderboard to {args.out}")
+    else:
+        print(f"\nFailed to save leaderboard to {args.out} (see above)")
+        return 1
     return 0
 
 

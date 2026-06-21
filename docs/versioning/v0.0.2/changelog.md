@@ -156,3 +156,19 @@ Checked thread robustness next: `TournamentRunner._thread_main()` runs each sche
 Verified three ways, including the multi-match scenario that proves recovery, not just isolation: a single failing match still fires `on_tournament_finished` and records a clean error result; a two-match tournament where only the *first* match is made to fail confirms the *second* match still runs and completes normally afterward, with the first correctly recorded as an error and the second correctly recorded as a real result.
 
 `tournament_runner.py` had zero unit test coverage before this round (`tests/test_tournament_runner.py` is new, including round-robin schedule-size coverage that had only been spot-checked manually before). 9 new tests, 269 total. Full regression sweep green, including a real multi-strategy tournament via `run_tournament.py`.
+
+---
+
+## Follow-up round 8: `save_to_file` callers were claiming success without checking it
+
+Closely related to round 7's fix: `MatchLog.save_to_file()` and `Leaderboard.save_to_file()` (unlike `map_loader.save_to_file()`, which already handled this) didn't catch `OSError` either, and every caller of either one unconditionally reported success regardless of what actually happened.
+
+**Confirmed directly:** patched `Leaderboard.save_to_file` to fail and ran a real tournament through `TournamentScreen`. The UI did *not* hang (`self.finished = True` is set before the save call, so round 7's fix already covers the hang case) — but it displayed "Tournament complete... Saved to {path}" even though the file was never written. A false success claim, not a crash or hang, but still wrong.
+
+**Fixed both functions** to catch `OSError`, log the failure the same way `map_loader.save_to_file` already does, and return `True`/`False` instead of `None`. Updated every caller to check the return value instead of assuming success:
+- `TournamentScreen._on_finished()` now tracks `self.save_failed` and `draw()` shows an honest red error line instead of the misleading "Saved to {path}" text when it's set.
+- `run_tournament.py` and `run_headless.py` (the CLI entry points) now print a failure message and exit with code 1 instead of claiming the replay/leaderboard was saved when it wasn't.
+- `MainMenu._match_worker()` needed an explicit check too, for a subtler reason: it already wrapped its whole body in `try/except Exception`, which used to catch a save failure because the old `save_to_file` *raised* on `OSError`. Now that `save_to_file` fails gracefully instead of raising, that same `except` block no longer catches anything here — without checking the return value directly, the method would report match success and hand a nonexistent replay path to the playback viewer.
+- `TournamentRunner._run_one_match()` now logs (without aborting the match — its results are still valid and worth keeping) if the replay write fails, rather than masking it silently.
+
+6 new tests across `tests/test_match_log.py` and `tests/test_leaderboard.py` (covering both the success and `OSError` return-value cases), 273 total. Full regression sweep green, including a real tournament and headless match through the actual CLI, confirming the normal (non-failing) success-reporting path is unchanged.

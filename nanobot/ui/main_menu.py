@@ -163,7 +163,16 @@ class MainMenu:
 
             os.makedirs(REPLAYS_DIR, exist_ok=True)
             out_path = os.path.join(REPLAYS_DIR, "last_match.json")
-            log.save_to_file(out_path)
+            if not log.save_to_file(out_path):
+                # save_to_file() now fails gracefully (returns False)
+                # instead of raising on OSError — see match_log.py. That
+                # means this method's own except-Exception below no
+                # longer catches a failed save the way it used to; check
+                # the return value explicitly instead, otherwise this
+                # would report success and then hand a nonexistent replay
+                # path to the playback viewer.
+                self._match_result = {"error": f"Match ran but failed to save replay to {out_path}"}
+                return
 
             a, b = (os.path.basename(p) for p in strategy_paths)
             self._match_result = {

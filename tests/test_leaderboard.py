@@ -1,3 +1,5 @@
+import builtins
+
 from nanobot.tournament.leaderboard import Leaderboard
 
 
@@ -127,3 +129,21 @@ class TestSaveToFile:
         nested = tmp_path / "a" / "b" / "results.json"
         lb.save_to_file(str(nested))
         assert nested.exists()
+
+    def test_save_returns_true_on_success(self, tmp_path):
+        lb = Leaderboard()
+        assert lb.save_to_file(str(tmp_path / "results.json")) is True
+
+    def test_save_returns_false_on_oserror_not_raises(self, tmp_path, monkeypatch):
+        # Confirmed reachable, not hypothetical: TournamentScreen calls
+        # this from inside the tournament-completion callback, and a
+        # failure here used to make the screen claim "Saved to {path}"
+        # even though the file was never written (self.finished is set
+        # before this call) — see tournament_ui.py's _on_finished fix.
+        lb = Leaderboard()
+
+        def raise_oserror(*args, **kwargs):
+            raise OSError("disk full (simulated)")
+        monkeypatch.setattr(builtins, "open", raise_oserror)
+
+        assert lb.save_to_file(str(tmp_path / "results.json")) is False

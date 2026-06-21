@@ -52,15 +52,28 @@ class Leaderboard:
         entries.sort(key=lambda e: (-e["wins"], -e["points"]))
         return entries
 
-    def save_to_file(self, path: str) -> None:
+    def save_to_file(self, path: str) -> bool:
         directory = os.path.dirname(path)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump({
-                "generated": datetime.datetime.now().isoformat(),
-                "entries": self.get_sorted(),
-            }, f, indent="\t")
+        try:
+            with open(path, "w") as f:
+                json.dump({
+                    "generated": datetime.datetime.now().isoformat(),
+                    "entries": self.get_sorted(),
+                }, f, indent="\t")
+        except OSError as e:
+            # Confirmed reachable: TournamentScreen._on_finished() calls
+            # this from inside the tournament-completion callback, itself
+            # invoked from TournamentRunner's background thread — and
+            # critically, it sets self.finished = True *before* this call,
+            # so a failure here didn't hang the UI, but it did make the
+            # screen claim "Tournament complete... Saved to {path}" even
+            # though the file was never actually written. Caller now
+            # checks the return value to avoid that false claim.
+            print(f"Leaderboard: could not save to {path}: {e}")
+            return False
+        return True
 
     def _ensure(self, path: str, dq: bool) -> None:
         if path not in self._entries:

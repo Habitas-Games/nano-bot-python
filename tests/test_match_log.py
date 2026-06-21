@@ -4,6 +4,7 @@ corrupted or incomplete replay file through the real UI, not just from
 hand-edited input, which makes its error handling worth covering
 directly rather than only incidentally via the viewer's own checks."""
 
+import builtins
 import json
 
 from nanobot.core.nanobot_data import NanoBotData
@@ -53,6 +54,23 @@ class TestSaveAndRoundTrip:
         nested = tmp_path / "a" / "b" / "replay.json"
         log.save_to_file(str(nested))
         assert nested.exists()
+
+    def test_save_returns_true_on_success(self, tmp_path):
+        log = MatchLog()
+        assert log.save_to_file(str(tmp_path / "replay.json")) is True
+
+    def test_save_returns_false_on_oserror_not_raises(self, tmp_path, monkeypatch):
+        # Confirmed reachable, not hypothetical: TournamentRunner calls
+        # this from a background thread, where an unhandled OSError used
+        # to propagate out and silently kill the thread (see
+        # tournament_runner.py's _run_one_match fix in the same version).
+        log = MatchLog()
+
+        def raise_oserror(*args, **kwargs):
+            raise OSError("disk full (simulated)")
+        monkeypatch.setattr(builtins, "open", raise_oserror)
+
+        assert log.save_to_file(str(tmp_path / "replay.json")) is False
 
 
 class TestLoadErrorHandling:

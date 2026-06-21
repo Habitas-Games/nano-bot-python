@@ -29,6 +29,7 @@ class TournamentScreen:
         self.total = 0
         self.finished = False
         self.started = False
+        self.save_failed = False
 
         self._build_buttons()
 
@@ -71,7 +72,13 @@ class TournamentScreen:
 
     def _on_finished(self) -> None:
         self.finished = True
-        self.leaderboard.save_to_file(RESULTS_PATH)
+        # Check the return value rather than assuming success — confirmed
+        # directly: a failure here (e.g. disk full) previously left the
+        # screen claiming "Tournament complete... Saved to {path}" even
+        # though the file was never actually written, since self.finished
+        # is set above unconditionally and the draw() text below it used
+        # to be unconditional too.
+        self.save_failed = not self.leaderboard.save_to_file(RESULTS_PATH)
 
     def handle_event(self, event: "pygame.event.Event") -> None:
         self.btn_start.enabled = not self.started
@@ -104,7 +111,10 @@ class TournamentScreen:
                 line = f"{i:<5}{entry['name'] + dq:<28}{entry['wins']:<4}{entry['losses']:<4}{entry['draws']:<4}{entry['points']:<6}"
                 draw_text(surface, line, (20, y), size=13)
                 y += 20
-            draw_text(surface, f"Saved to {RESULTS_PATH}", (20, y + 10), size=11, color=(150, 150, 150))
+            if self.save_failed:
+                draw_text(surface, f"Failed to save results to {RESULTS_PATH} (see console)", (20, y + 10), size=11, color=(230, 120, 100))
+            else:
+                draw_text(surface, f"Saved to {RESULTS_PATH}", (20, y + 10), size=11, color=(150, 150, 150))
 
         if not self.started:
             draw_text(surface, "Click Start Tournament to run a round-robin over strategies/*.py x maps/*.json",

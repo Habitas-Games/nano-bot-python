@@ -52,13 +52,17 @@ def _execute(args: dict) -> int:
     log = sim.run()
 
     out_path = args.get("out", _auto_out_path(strategies))
-    log.save_to_file(out_path)
+    saved = log.save_to_file(out_path)
 
     print(f"HeadlessRunner: match complete in {log.total_turns} turns")
     print(f"HeadlessRunner: winner — player {log.winner_id}")
     for pid, score in log.final_scores.items():
         print(f"  player {pid}: {score} pts")
-    print(f"HeadlessRunner: replay saved to {out_path}")
+    if saved:
+        print(f"HeadlessRunner: replay saved to {out_path}")
+    else:
+        print(f"HeadlessRunner: failed to save replay to {out_path} (see above)")
+        return 1
     return 0
 
 

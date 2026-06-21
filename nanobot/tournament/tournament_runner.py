@@ -102,7 +102,13 @@ class TournamentRunner:
         log = sim.run()
 
         replay_path = self._replay_path(entry, i)
-        log.save_to_file(replay_path)
+        if not log.save_to_file(replay_path):
+            # The match itself still completed with valid results worth
+            # keeping in the leaderboard — just the replay file write
+            # failed (disk full, permission denied). Log it rather than
+            # silently masking it; doesn't abort the match, since nothing
+            # currently reads replay_path back from a tournament result.
+            print(f"TournamentRunner: match {i} completed but failed to save replay to {replay_path}")
 
         result = {
             "match_index": i,
