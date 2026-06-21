@@ -45,18 +45,45 @@ def _load_strategy_instance(path: str) -> NanoStrategy | None:
         print(f"SimulationCore: error executing strategy {path}: {e}")
         return None
 
-    for attr_name in dir(module):
-        attr = getattr(module, attr_name)
-        if (isinstance(attr, type) and issubclass(attr, NanoStrategy)
-                and attr is not NanoStrategy):
-            try:
-                return attr()
-            except Exception as e:
-                print(f"SimulationCore: error instantiating strategy {path}: {e}")
-                return None
+    # Restrict to classes actually *defined* in this file (attr.__module__
+    # matches), not ones merely visible in its namespace via an import —
+    # otherwise a strategy file that does e.g. `from shared import
+    # BaseStrategy` where BaseStrategy itself subclasses NanoStrategy would
+    # see that as a second candidate too.
+    #
+    # A GDScript file structurally *is* exactly one class (extends
+    # NanoStrategy directly), so this whole ambiguity can't arise in the
+    # Godot original — it's specific to Python allowing multiple classes
+    # per file. dir(module) also returns names in *sorted* order, not
+    # definition order, so picking "the first one found" would silently
+    # and non-obviously prefer whichever class name happens to sort first
+    # alphabetically — e.g. a leftover draft class a participant forgot to
+    # delete could silently win over their real strategy with no warning
+    # at all. Fail loudly instead: if there's more than one candidate, that
+    # is a participant error, not a guess for this loader to make for them.
+    candidates = [
+        getattr(module, name) for name in dir(module)
+        if isinstance(getattr(module, name), type)
+        and issubclass(getattr(module, name), NanoStrategy)
+        and getattr(module, name) is not NanoStrategy
+        and getattr(module, name).__module__ == module.__name__
+    ]
 
-    print(f"SimulationCore: no NanoStrategy subclass found in: {path}")
-    return None
+    if not candidates:
+        print(f"SimulationCore: no NanoStrategy subclass found in: {path}")
+        return None
+
+    if len(candidates) > 1:
+        names = ", ".join(c.__name__ for c in candidates)
+        print(f"SimulationCore: multiple NanoStrategy subclasses found in {path} "
+              f"({names}) — a strategy file must define exactly one")
+        return None
+
+    try:
+        return candidates[0]()
+    except Exception as e:
+        print(f"SimulationCore: error instantiating strategy {path}: {e}")
+        return None
 
 
 class SimulationCore:

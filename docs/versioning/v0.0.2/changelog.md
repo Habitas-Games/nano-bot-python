@@ -106,3 +106,15 @@ Unlike the `MapHistory` and `starting_azn` fixes, this one changes who actually 
 **Fixed:** `SimulationCore._determine_winner()` now: finds the max score, checks for a tie; if tied, narrows by bots-still-alive; if still tied, narrows by `_player_azn_bank` (the only "AZN collected" value actually tracked); if still tied after both (fully symmetric state), falls back to first player_id — same as the old behavior, but now only as a last resort instead of the only resort.
 
 Verified with 4 new tests: a tie broken by bots-alive, a tie broken by AZN-banked (after bots-alive was also equal), a fully-symmetric tie still falling back to player 0, and a clear non-tied score winning outright regardless of bots-alive/bank (confirming the tie-break machinery doesn't kick in when there's no tie to break). 238 tests total. Full regression sweep (pytest, editor integration script, real CLI match) confirms zero change to any non-tied match outcome, including both real shipped maps.
+
+---
+
+## Follow-up round 4: strategy-loading ambiguity — new to the port, not inherited
+
+While testing a 3-strategy tournament, checked what `_load_strategy_instance()` does if a participant's `.py` file happens to define more than one `NanoStrategy` subclass (e.g. a leftover draft they forgot to delete, or a shared helper base class). It picked one — via `dir(module)`, which returns names in **sorted alphabetical order, not definition order** — meaning it would silently prefer whichever class name happens to sort first, with zero warning that a second candidate even existed.
+
+**This is the one finding in this version that is not inherited from the Godot original** — confirmed by checking: a GDScript file structurally *is* exactly one class (`extends NanoStrategy` at the top level), so this ambiguity cannot arise there at all. It's a risk specific to porting to a language that allows multiple classes per file. A second, related gap: `dir(module)` also returns names merely *visible* in the module's namespace, including ones pulled in via `import` — a strategy file that imports a shared base class (itself a `NanoStrategy` subclass) would see that import as a second "candidate" too, even though it isn't defined in that file at all.
+
+**Fixed:** restrict candidates to classes whose `__module__` actually matches the loaded module (excludes imported classes); if zero match, same "no subclass found" message as before; if more than one match, fail loudly with the names of all candidates rather than silently picking one — a participant should see this and fix their file, not debug a confusing "my strategy isn't doing what I coded" session caused by the wrong class quietly running.
+
+7 new tests (`tests/test_strategy_loading.py`), 245 total. Full regression sweep green.
