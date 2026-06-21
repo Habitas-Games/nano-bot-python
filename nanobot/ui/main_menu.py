@@ -24,7 +24,7 @@ import pygame
 
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.simulation_core import SimulationCore
-from nanobot.ui.widgets import Button, draw_text
+from nanobot.ui.widgets import Button, FilePickerModal, draw_text
 
 STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "strategies")
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "maps")
@@ -45,7 +45,7 @@ class MainMenu:
         self._match_result: dict | None = None  # set by the thread: {"path": str} or {"error": str}
         self._match_started_at = 0.0
 
-        self.modal: dict | None = None
+        self.picker = FilePickerModal()
         # What "Run Match" will actually use — previously not settable at
         # all, hardcoded to glob()'s first map and first two strategies.
         self.selected_map: str | None = None
@@ -99,8 +99,7 @@ class MainMenu:
         self.btn_select_p1.text = f"Player 2 Strategy: {name(self.selected_p1)}"
 
     def handle_event(self, event: "pygame.event.Event") -> None:
-        if self.modal is not None:
-            self._handle_modal_event(event)
+        if self.picker.handle_event(event):
             return
         if self.running_match:
             return  # ignore input while a match is in flight — nothing to click into
@@ -108,16 +107,15 @@ class MainMenu:
             btn.handle_event(event)
 
     # --- map/strategy picker modal ---
-    # Same dict-driven modal pattern as the map editor's load_picker
-    # (map_editor.py) — re-globs fresh each time it's opened so a map or
-    # strategy saved after the menu first loaded still shows up.
+    # Re-globs fresh each time it's opened so a map or strategy saved
+    # after the menu first loaded still shows up.
 
     def _open_map_picker(self) -> None:
         files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
         if not files:
             self.message = "No maps found in maps/"
             return
-        self.modal = {"type": "picker", "title": "Select map", "files": files, "slot": "map"}
+        self.picker.open("Select map", files, lambda path: self._apply_picker_choice("map", path))
 
     def _open_strategy_picker(self, slot: str) -> None:
         files = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
@@ -125,21 +123,7 @@ class MainMenu:
             self.message = "No strategies found in strategies/"
             return
         label = "Player 1" if slot == "p0" else "Player 2"
-        self.modal = {"type": "picker", "title": f"Select {label} strategy", "files": files, "slot": slot}
-
-    def _handle_modal_event(self, event: "pygame.event.Event") -> None:
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.modal = None
-            return
-        if event.type != pygame.MOUSEBUTTONDOWN:
-            return
-        for i, rect in enumerate(getattr(self, "_modal_file_rects", [])):
-            if rect.collidepoint(event.pos):
-                self._apply_picker_choice(self.modal["slot"], self.modal["files"][i])
-                self.modal = None
-                return
-        if not getattr(self, "_modal_box_rect", pygame.Rect(0, 0, 0, 0)).collidepoint(event.pos):
-            self.modal = None
+        self.picker.open(f"Select {label} strategy", files, lambda path: self._apply_picker_choice(slot, path))
 
     def _apply_picker_choice(self, slot: str, path: str) -> None:
         if slot == "map":
@@ -180,33 +164,7 @@ class MainMenu:
         elif self.message:
             draw_text(surface, self.message, (cx - 200, self.screen_size[1] - 60), size=13, color=(220, 200, 120))
 
-        if self.modal is not None:
-            self._draw_modal(surface)
-
-    def _draw_modal(self, surface: "pygame.Surface") -> None:
-        overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        surface.blit(overlay, (0, 0))
-
-        m = self.modal
-        box_w = 360
-        box_h = 56 + 28 * len(m["files"])
-        box_x = (self.screen_size[0] - box_w) // 2
-        box_y = (self.screen_size[1] - box_h) // 2
-        box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
-        self._modal_box_rect = box_rect
-        pygame.draw.rect(surface, (45, 48, 58), box_rect, border_radius=6)
-        pygame.draw.rect(surface, (90, 95, 110), box_rect, width=2, border_radius=6)
-
-        draw_text(surface, m["title"], (box_x + 16, box_y + 14), size=14)
-        rects = []
-        for i, path in enumerate(m["files"]):
-            r = pygame.Rect(box_x + 12, box_y + 44 + i * 28, box_w - 24, 24)
-            hovered = r.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
-            draw_text(surface, os.path.basename(path), (r.x + 8, r.y + 4), size=12)
-            rects.append(r)
-        self._modal_file_rects = rects
+        self.picker.draw(surface, self.screen_size)
 
     def _draw_running_indicator(self, surface: "pygame.Surface", cx: int) -> None:
         elapsed = time.monotonic() - self._match_started_at

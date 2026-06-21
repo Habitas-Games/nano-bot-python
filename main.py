@@ -79,12 +79,19 @@ class App:
                         self.tournament.resize(size)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and self.current is not self.menu:
                     # If the current screen has an open modal (e.g. the map
-                    # editor's save/load dialogs), let it handle Escape
-                    # itself first — its own modal-cancel logic should
-                    # dismiss the modal, not jump straight past it to the
-                    # main menu. Only screens with no modal open treat
-                    # Escape as "go back".
-                    if getattr(self.current, "modal", None) is not None:
+                    # editor's save/load dialogs) or an open FilePickerModal
+                    # (the playback viewer's map/strategy pickers), let it
+                    # handle Escape itself first — its own modal-cancel logic
+                    # should dismiss the modal, not jump straight past it to
+                    # the main menu. Only screens with nothing open treat
+                    # Escape as "go back". Checked via getattr/duck-typing
+                    # since MapEditorScreen uses a bare self.modal dict and
+                    # PlaybackViewer uses a self.picker FilePickerModal —
+                    # different shapes, same "is something open" question.
+                    picker = getattr(self.current, "picker", None)
+                    has_modal = getattr(self.current, "modal", None) is not None
+                    has_picker = picker is not None and picker.is_open
+                    if has_modal or has_picker:
                         self.current.handle_event(event)
                     else:
                         self.current = self.menu

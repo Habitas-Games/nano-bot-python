@@ -171,3 +171,79 @@ class Slider:
         handle_x = self.rect.x + int(t * self.rect.width)
         pygame.draw.circle(surface, (120, 200, 140), (handle_x, self.rect.centery), 6)
         pygame.draw.circle(surface, (20, 22, 30), (handle_x, self.rect.centery), 6, width=1)
+
+
+class FilePickerModal:
+    """A centered modal listing files to choose from, click a row to pick
+    one. Originally written once for the main menu's map/strategy
+    pickers; pulled out here once the playback viewer needed the exact
+    same behavior, rather than copy-pasting the same ~50 lines twice."""
+
+    def __init__(self):
+        self._title = ""
+        self._files: list[str] = []
+        self._on_select: Callable[[str], None] | None = None
+        self._box_rect = pygame.Rect(0, 0, 0, 0)
+        self._file_rects: list[pygame.Rect] = []
+
+    @property
+    def is_open(self) -> bool:
+        return self._on_select is not None
+
+    def open(self, title: str, files: list[str], on_select: Callable[[str], None]) -> None:
+        self._title = title
+        self._files = files
+        self._on_select = on_select
+
+    def close(self) -> None:
+        self._on_select = None
+
+    def handle_event(self, event: "pygame.event.Event") -> bool:
+        """Returns True if the event was consumed (always True while open,
+        since the modal should block whatever's underneath it)."""
+        if not self.is_open:
+            return False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.close()
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            for i, rect in enumerate(self._file_rects):
+                if rect.collidepoint(event.pos):
+                    path = self._files[i]
+                    on_select = self._on_select
+                    self.close()
+                    on_select(path)
+                    return True
+            if not self._box_rect.collidepoint(event.pos):
+                self.close()
+            return True
+        return True
+
+    def draw(self, surface: "pygame.Surface", screen_size: tuple[int, int]) -> None:
+        if not self.is_open:
+            return
+        overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        surface.blit(overlay, (0, 0))
+
+        box_w = 360
+        box_h = 56 + 28 * len(self._files)
+        box_x = (screen_size[0] - box_w) // 2
+        box_y = (screen_size[1] - box_h) // 2
+        self._box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+        pygame.draw.rect(surface, (45, 48, 58), self._box_rect, border_radius=6)
+        pygame.draw.rect(surface, (90, 95, 110), self._box_rect, width=2, border_radius=6)
+
+        draw_text(surface, self._title, (box_x + 16, box_y + 14), size=14)
+        rects = []
+        for i, path in enumerate(self._files):
+            r = pygame.Rect(box_x + 12, box_y + 44 + i * 28, box_w - 24, 24)
+            hovered = r.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
+            draw_text(surface, _basename(path), (r.x + 8, r.y + 4), size=12)
+            rects.append(r)
+        self._file_rects = rects
+
+
+def _basename(path: str) -> str:
+    return path.replace("\\", "/").rsplit("/", 1)[-1]

@@ -3,24 +3,42 @@ with playback controls. Mirrors the Godot project's planned VIS-01..08
 requirements (docs/requirements.md §4.6) — color-coded density, animated
 stream arrows, per-team bot coloring with type icons, play/pause/step/
 speed controls, a HUD with turn/score/AZN/bots-alive, and click-to-inspect
-on any bot."""
+on any bot. Also doubles as the "Run Match" workspace: row 2 of the top
+bar lets you change the map/strategies and re-simulate without leaving
+this screen, on the same background-thread pattern main_menu.py uses for
+the same reason (a strategy-heavy match can take real wall-clock time;
+blocking the event loop would freeze the window with no redraw)."""
 
 from __future__ import annotations
 
+import glob
+import math
 import os
+import threading
+import time
 
 import pygame
 
 from nanobot.core.map_data import Density, MapData, StreamDir
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.match_log import MatchLog
+from nanobot.core.simulation_core import SimulationCore
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, Slider, draw_text, get_font
+from nanobot.ui.widgets import Button, FilePickerModal, Slider, draw_text, get_font
 
 CELL_SIZE = 14
 SIDEBAR_WIDTH = 260
-CONTROL_BAR_HEIGHT = 50
+# Row 1: playback controls (play/step/speed) + Back to Menu, unchanged.
+# Row 2: map/strategy pickers + Restart — lets you change what's being
+# watched and re-run without bouncing back to the main menu, which is
+# the only place this used to be possible.
+TOP_ROW_HEIGHT = 50
+SETUP_ROW_HEIGHT = 40
+CONTROL_BAR_HEIGHT = TOP_ROW_HEIGHT + SETUP_ROW_HEIGHT
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
+STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategies")
+MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
+REPLAYS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "replays")
 
 # Fallback flat colors, used only if a texture file is missing — the real
 # rendering uses the same tile/marker textures as the map editor and the
@@ -57,13 +75,6 @@ def _load_bot_sprite(bot_type: str) -> "pygame.Surface | None":
 class PlaybackViewer:
     def __init__(self, screen_size: tuple[int, int], replay_path: str):
         self.screen_size = screen_size
-        self.log: MatchLog | None = MatchLog.load_from_file(replay_path)
-        self.map: MapData | None = None
-        if self.log is not None:
-            map_path = self._resolve_map_path(self.log.map_name)
-            self.map = load_from_file(map_path) if map_path else None
-        if self.map is None:
-            self.map = MapData(40, 40)  # fallback blank map so the viewer doesn't crash
 
         self.bot_sprites: dict[str, "pygame.Surface | None"] = {}
 
@@ -85,22 +96,80 @@ class PlaybackViewer:
         self._scaled_cache: dict[tuple, "pygame.Surface"] = {}
         self._owned_tint_cache: dict[tuple, "pygame.Surface"] = {}
 
-        self.current_frame = 0
         self.playing = False
         self.speed_index = 2  # 1.0x
         self._accum = 0.0
 
-        self.zoom = 1.0
+        # Slightly above 1:1 by default and a higher max than the original
+        # 3.0 — at 1.0x/14px cells, a 16px bot sprite downscales to ~10px
+        # after the team-color inset and is unrecognizable as anything but
+        # a smudge. Panning (below) makes it practical to actually use a
+        # closer zoom to see one clearly.
+        self.zoom = 1.5
         self.scroll_x = 0
         self.scroll_y = 0
         self.selected_bot_id: int | None = None
+        self._left_down_pos: tuple[int, int] | None = None
+        self._left_dragged = False
+
+        self.on_back_to_menu = None  # callback()
+
+        self.picker = FilePickerModal()
+        self.running_match = False
+        self._match_thread: threading.Thread | None = None
+        self._match_result: dict | None = None
+        self._match_started_at = 0.0
+        self.match_message = ""
 
         self.canvas_rect = pygame.Rect(0, CONTROL_BAR_HEIGHT, 0, 0)
         self._recompute_canvas_rect()
 
-        self.on_back_to_menu = None  # callback()
+        self.log: MatchLog | None = None
+        self.map: MapData | None = None
+        self.current_frame = 0
+        self._load_replay(replay_path)
+
+        # What the picker buttons show and what Restart will use — seeded
+        # from whatever produced the currently-loaded replay, so the
+        # selectors start out describing what's actually on screen.
+        self.selected_map: str | None = None
+        self.selected_p0: str | None = None
+        self.selected_p1: str | None = None
+        self._init_selection_from_log()
 
         self._build_controls()
+
+    def _init_selection_from_log(self) -> None:
+        strategies = list(self.log.player_strategies) if self.log else []
+        self.selected_p0 = strategies[0] if len(strategies) > 0 and os.path.exists(strategies[0]) else None
+        self.selected_p1 = strategies[1] if len(strategies) > 1 and os.path.exists(strategies[1]) else None
+        self.selected_map = self._resolve_map_path(self.log.map_name) if self.log else None
+
+        # Fall back to whatever's actually available rather than leaving a
+        # picker stuck on "(none found)" just because the replay that
+        # happened to be loaded first didn't have a resolvable map/strategy
+        # (e.g. a hand-edited replay, or a strategy file since deleted).
+        if self.selected_map is None:
+            maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+            self.selected_map = maps[0] if maps else None
+        if self.selected_p0 is None or self.selected_p1 is None:
+            strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
+            if self.selected_p0 is None:
+                self.selected_p0 = strategies[0] if strategies else None
+            if self.selected_p1 is None:
+                self.selected_p1 = strategies[1] if len(strategies) > 1 else (strategies[0] if strategies else None)
+
+    def _load_replay(self, replay_path: str) -> None:
+        self.log = MatchLog.load_from_file(replay_path)
+        self.map = None
+        if self.log is not None:
+            map_path = self._resolve_map_path(self.log.map_name)
+            self.map = load_from_file(map_path) if map_path else None
+        if self.map is None:
+            self.map = MapData(40, 40)  # fallback blank map so the viewer doesn't crash
+        self.current_frame = 0
+        self.selected_bot_id = None
+        self._accum = 0.0
 
     def _resolve_map_path(self, map_name: str) -> str | None:
         maps_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
@@ -142,6 +211,19 @@ class PlaybackViewer:
         self.btn_back = Button((self.screen_size[0] - 130, y, 120, size), "Back to Menu",
                                 icon=icons.back_arrow_icon(16), on_click=self._back)
 
+        # Row 2 — change what's being watched and re-run, without leaving
+        # this screen. Mirrors the main menu's picker pattern exactly.
+        y2 = TOP_ROW_HEIGHT + 4
+        sel_h = 32
+        self.btn_select_map = Button((10, y2, 170, sel_h), "", on_click=self._open_map_picker)
+        x2 = 10 + 170 + 6
+        self.btn_select_p0 = Button((x2, y2, 230, sel_h), "", on_click=lambda: self._open_strategy_picker("p0"))
+        x2 += 230 + 6
+        self.btn_select_p1 = Button((x2, y2, 230, sel_h), "", on_click=lambda: self._open_strategy_picker("p1"))
+        x2 += 230 + 14
+        self.btn_restart = Button((x2, y2, 100, sel_h), "Restart", icon=icons.play_icon(14), on_click=self._restart_match)
+        self._refresh_selector_labels()
+
         self._compute_hud_layout()
         sidebar_x = self.screen_size[0] - SIDEBAR_WIDTH
         max_frame = len(self.log.frames) - 1 if self.log and self.log.frames else 0
@@ -149,7 +231,76 @@ class PlaybackViewer:
                                    0, max_frame, self.current_frame, on_change=self._jump_to)
 
         self.controls = [self.btn_play, self.btn_step_back, self.btn_step_fwd,
-                          self.btn_speed_down, self.btn_speed_up, self.btn_back, self.turn_slider]
+                          self.btn_speed_down, self.btn_speed_up, self.btn_back, self.turn_slider,
+                          self.btn_select_map, self.btn_select_p0, self.btn_select_p1, self.btn_restart]
+
+    def _refresh_selector_labels(self) -> None:
+        def name(path: str | None) -> str:
+            return os.path.basename(path).rsplit(".", 1)[0] if path else "(none found)"
+        self.btn_select_map.text = f"Map: {name(self.selected_map)}"
+        self.btn_select_p0.text = f"P1: {name(self.selected_p0)}"
+        self.btn_select_p1.text = f"P2: {name(self.selected_p1)}"
+
+    def _open_map_picker(self) -> None:
+        files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+        if not files:
+            self.match_message = "No maps found in maps/"
+            return
+        self.picker.open("Select map", files, lambda path: self._apply_picker_choice("map", path))
+
+    def _open_strategy_picker(self, slot: str) -> None:
+        files = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
+        if not files:
+            self.match_message = "No strategies found in strategies/"
+            return
+        label = "Player 1" if slot == "p0" else "Player 2"
+        self.picker.open(f"Select {label} strategy", files, lambda path: self._apply_picker_choice(slot, path))
+
+    def _apply_picker_choice(self, slot: str, path: str) -> None:
+        if slot == "map":
+            self.selected_map = path
+        elif slot == "p0":
+            self.selected_p0 = path
+        elif slot == "p1":
+            self.selected_p1 = path
+        self._refresh_selector_labels()
+
+    def _restart_match(self) -> None:
+        if self.running_match:
+            return
+        missing = [p for p in (self.selected_map, self.selected_p0, self.selected_p1)
+                   if p is None or not os.path.exists(p)]
+        if missing:
+            self.match_message = "Select a map and both strategies before restarting"
+            return
+
+        self.running_match = True
+        self.match_message = ""
+        self._match_result = None
+        self._match_started_at = time.monotonic()
+        self._match_thread = threading.Thread(
+            target=self._match_worker, args=(self.selected_map, [self.selected_p0, self.selected_p1]), daemon=True)
+        self._match_thread.start()
+
+    def _match_worker(self, map_path: str, strategy_paths: list[str]) -> None:
+        try:
+            map_data = load_from_file(map_path)
+            sim = SimulationCore(map_data, strategy_paths, seed=0)
+            log = sim.run()
+
+            os.makedirs(REPLAYS_DIR, exist_ok=True)
+            out_path = os.path.join(REPLAYS_DIR, "last_match.json")
+            if not log.save_to_file(out_path):
+                self._match_result = {"error": f"Match ran but failed to save replay to {out_path}"}
+                return
+
+            a, b = (os.path.basename(p) for p in strategy_paths)
+            self._match_result = {
+                "path": out_path,
+                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id}",
+            }
+        except Exception as e:
+            self._match_result = {"error": f"Match failed: {e}"}
 
     def _compute_hud_layout(self) -> None:
         # Every HUD section's y-position computed once here, rather than by
@@ -204,6 +355,21 @@ class PlaybackViewer:
     # --- update / events ---
 
     def update(self, dt: float) -> None:
+        if self.running_match:
+            if self._match_thread is not None and not self._match_thread.is_alive():
+                self.running_match = False
+                result = self._match_result or {}
+                if "error" in result:
+                    self.match_message = result["error"]
+                else:
+                    self.match_message = result["summary"]
+                    self._load_replay(result["path"])
+                    max_frame = len(self.log.frames) - 1 if self.log and self.log.frames else 0
+                    self.turn_slider.set_range(0, max_frame)
+                    self.turn_slider.set_value(0)
+                    self._compute_hud_layout()
+            return
+
         if not self.playing or self.log is None or not self.log.frames:
             return
         self._accum += dt * SPEEDS[self.speed_index]
@@ -218,24 +384,46 @@ class PlaybackViewer:
                 break
 
     def handle_event(self, event: "pygame.event.Event") -> None:
+        if self.picker.handle_event(event):
+            return
+        if self.running_match:
+            return  # nothing meaningful to interact with while a new match computes
+
         for btn in self.controls:
             if btn.handle_event(event):
                 return
 
         if event.type == pygame.MOUSEWHEEL:
             if self.canvas_rect.collidepoint(pygame.mouse.get_pos()):
-                self.zoom = max(0.5, min(3.0, self.zoom + event.y * 0.1))
+                self.zoom = max(0.5, min(6.0, self.zoom + event.y * 0.1))
             return
 
+        # Left button: click-to-select a bot, or drag-to-pan if the mouse
+        # actually moves before release — distinguished by whether any
+        # motion happened between down and up, not by which button it is.
+        # Middle-drag (below) still works too for anyone used to it, but
+        # requires a middle mouse button many trackpads/mice don't have a
+        # comfortable way to hold — left-drag needs nothing special.
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.canvas_rect.collidepoint(event.pos):
-            self._handle_canvas_click(event.pos)
+            self._left_down_pos = event.pos
+            self._left_dragged = False
             return
-
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
-            self._pan_start = event.pos
-        elif event.type == pygame.MOUSEMOTION and event.buttons[1]:
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._left_down_pos is not None and not self._left_dragged \
+                    and self.canvas_rect.collidepoint(event.pos):
+                self._handle_canvas_click(event.pos)
+            self._left_down_pos = None
+            self._left_dragged = False
+            return
+        if event.type == pygame.MOUSEMOTION and event.buttons[0] and self._left_down_pos is not None:
+            self._left_dragged = True
             self.scroll_x -= event.rel[0]
             self.scroll_y -= event.rel[1]
+            return
+        if event.type == pygame.MOUSEMOTION and event.buttons[1]:
+            self.scroll_x -= event.rel[0]
+            self.scroll_y -= event.rel[1]
+            return
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
@@ -267,7 +455,9 @@ class PlaybackViewer:
         surface.fill((24, 24, 28))
 
         pygame.draw.rect(surface, (20, 20, 24), (0, 0, self.screen_size[0], CONTROL_BAR_HEIGHT))
+        pygame.draw.line(surface, (12, 12, 16), (0, TOP_ROW_HEIGHT), (self.screen_size[0], TOP_ROW_HEIGHT), 1)
         for btn in self.controls:
+            btn.enabled = not self.running_match
             btn.draw(surface)
         speed_label = f"{SPEEDS[self.speed_index]}x"
         # Positioned relative to the actual button rects, not hardcoded
@@ -279,8 +469,15 @@ class PlaybackViewer:
         label_surf = font.render(speed_label, True, (215, 218, 228))
         surface.blit(label_surf, (label_center_x - label_surf.get_width() // 2, self.btn_speed_down.rect.y + 8))
 
+        if self.running_match:
+            self._draw_running_indicator(surface)
+        elif self.match_message:
+            draw_text(surface, self.match_message, (self.btn_restart.rect.right + 14, TOP_ROW_HEIGHT + 13),
+                      size=12, color=(220, 200, 120))
+
         if self.log is None or not self.log.frames:
-            draw_text(surface, "No replay loaded / empty match log", (20, 70), size=16, color=(220, 100, 100))
+            draw_text(surface, "No replay loaded / empty match log", (20, CONTROL_BAR_HEIGHT + 20), size=16, color=(220, 100, 100))
+            self.picker.draw(surface, self.screen_size)
             return
 
         frame = self.log.frames[self.current_frame]
@@ -298,6 +495,22 @@ class PlaybackViewer:
         self.turn_slider.set_value(self.current_frame)
         self._draw_hud(surface, frame)
         self._draw_inspector(surface, frame)
+
+        self.picker.draw(surface, self.screen_size)
+
+    def _draw_running_indicator(self, surface: "pygame.Surface") -> None:
+        elapsed = time.monotonic() - self._match_started_at
+        x = self.btn_restart.rect.right + 14
+        y = TOP_ROW_HEIGHT + 20
+        radius = 8
+        angle = (elapsed * 4.0) % (2 * math.pi)
+        for i in range(8):
+            a = angle + i * (2 * math.pi / 8)
+            shade = 80 + int(150 * (i / 8))
+            px = x + radius + radius * math.cos(a)
+            py = y + radius * math.sin(a)
+            pygame.draw.circle(surface, (shade, shade, shade), (int(px), int(py)), 2)
+        draw_text(surface, f"Simulating... {elapsed:.1f}s", (x + radius * 2 + 10, y - 7), size=12, color=(220, 200, 120))
 
     def _cell_rect(self, x: int, y: int) -> pygame.Rect:
         size = CELL_SIZE * self.zoom
@@ -445,8 +658,11 @@ class PlaybackViewer:
             pygame.draw.circle(surface, color, r.center, r.width // 2, width=3)
 
             if sprite:
-                # Shrink the icon slightly so the team ring isn't drawn over it.
-                inset = max(2, r.width // 6)
+                # Shrink the icon just enough that the team ring isn't drawn
+                # over it — a bigger inset than this made the sprite shrink
+                # to a handful of pixels at the default zoom and become an
+                # indistinct blob rather than a recognizable bot type.
+                inset = max(1, r.width // 10)
                 icon_rect = r.inflate(-inset * 2, -inset * 2)
                 scaled = pygame.transform.smoothscale(sprite, icon_rect.size)
                 surface.blit(scaled, icon_rect.topleft)
