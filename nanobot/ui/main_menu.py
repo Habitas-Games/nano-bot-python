@@ -183,7 +183,7 @@ class MainMenu:
             a, b = (os.path.basename(p) for p in strategy_paths)
             self._match_result = {
                 "path": out_path,
-                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id}",
+                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id + 1}",
             }
         except Exception as e:
             self._match_result = {"error": f"Match failed: {e}"}

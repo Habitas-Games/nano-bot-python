@@ -46,4 +46,4 @@ class ZoneTool(EditorTool):
         return (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
 
     def get_status_text(self) -> str:
-        return "Tool: Place Zone | Drag to create rectangle (player 0; use Edit tool to reposition)"
+        return "Tool: Place Zone | Drag to create rectangle (player 1; use Edit tool to reposition)"

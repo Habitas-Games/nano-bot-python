@@ -297,7 +297,7 @@ class PlaybackViewer:
             a, b = (os.path.basename(p) for p in strategy_paths)
             self._match_result = {
                 "path": out_path,
-                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id}",
+                "summary": f"{a} vs {b}: complete in {log.total_turns} turns — winner: Player {log.winner_id + 1}",
             }
         except Exception as e:
             self._match_result = {"error": f"Match failed: {e}"}
@@ -712,11 +712,11 @@ class PlaybackViewer:
             color = PLAYER_COLORS[pid % len(PLAYER_COLORS)]
             alive = sum(1 for b in frame["bots"] if b["owner"] == pid and b["alive"])
             pygame.draw.rect(surface, color, (x + 12, y + 2, 10, 10))
-            draw_text(surface, f"Player {pid}: {score} pts  ({alive} bots alive)", (x + 28, y), size=12)
+            draw_text(surface, f"Player {pid + 1}: {score} pts  ({alive} bots alive)", (x + 28, y), size=12)
             y += 20
 
         if self.current_frame == len(self.log.frames) - 1:
-            draw_text(surface, f"Winner: Player {self.log.winner_id}", (x + 12, L["winner"]), size=14, color=(120, 230, 140))
+            draw_text(surface, f"Winner: Player {self.log.winner_id + 1}", (x + 12, L["winner"]), size=14, color=(120, 230, 140))
 
         draw_text(surface, "Map Legend", (x + 12, L["legend_header"]), size=12, color=(160, 165, 180))
         y = L["legend_rows"]
@@ -747,7 +747,7 @@ class PlaybackViewer:
 
         lines = [
             f"#{bot['id']} {bot['type']}",
-            f"Owner: Player {bot['owner']}",
+            f"Owner: Player {bot['owner'] + 1}",
             f"HP: {bot['hp']}",
             f"AZN carried: {bot['azn']}",
             f"Position: {tuple(bot['pos'])}",
