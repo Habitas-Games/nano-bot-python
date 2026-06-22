@@ -24,7 +24,7 @@ import pygame
 
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.simulation_core import SimulationCore
-from nanobot.ui.widgets import Button, FilePickerModal, draw_text
+from nanobot.ui.widgets import Button, draw_text
 
 STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "strategies")
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "maps")
@@ -45,22 +45,7 @@ class MainMenu:
         self._match_result: dict | None = None  # set by the thread: {"path": str} or {"error": str}
         self._match_started_at = 0.0
 
-        self.picker = FilePickerModal()
-        # What "Run Match" will actually use — previously not settable at
-        # all, hardcoded to glob()'s first map and first two strategies.
-        self.selected_map: str | None = None
-        self.selected_p0: str | None = None
-        self.selected_p1: str | None = None
-        self._init_default_selection()
-
         self._build_buttons()
-
-    def _init_default_selection(self) -> None:
-        maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-        strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
-        self.selected_map = maps[0] if maps else None
-        self.selected_p0 = strategies[0] if strategies else None
-        self.selected_p1 = strategies[1] if len(strategies) > 1 else (strategies[0] if strategies else None)
 
     def resize(self, screen_size: tuple[int, int]) -> None:
         self.screen_size = screen_size
@@ -69,15 +54,7 @@ class MainMenu:
     def _build_buttons(self) -> None:
         cx = self.screen_size[0] // 2
         w, h, gap = 260, 44, 14
-        sel_h, sel_gap = 32, 6
-        y = self.screen_size[1] // 2 - 178
-
-        self.btn_select_map = Button((cx - w // 2, y, w, sel_h), "", on_click=self._open_map_picker)
-        y += sel_h + sel_gap
-        self.btn_select_p0 = Button((cx - w // 2, y, w, sel_h), "", on_click=lambda: self._open_strategy_picker("p0"))
-        y += sel_h + sel_gap
-        self.btn_select_p1 = Button((cx - w // 2, y, w, sel_h), "", on_click=lambda: self._open_strategy_picker("p1"))
-        y += sel_h + gap
+        y = self.screen_size[1] // 2 - 120
 
         self.btn_run = Button((cx - w // 2, y, w, h), "Run Match", on_click=self._run_match)
         y += h + gap
@@ -87,52 +64,13 @@ class MainMenu:
         y += h + gap
         self.btn_quit = Button((cx - w // 2, y, w, h), "Quit", on_click=self._quit)
 
-        self.selector_buttons = [self.btn_select_map, self.btn_select_p0, self.btn_select_p1]
-        self.buttons = self.selector_buttons + [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
-        self._refresh_selector_labels()
-
-    def _refresh_selector_labels(self) -> None:
-        def name(path: str | None) -> str:
-            return os.path.basename(path).rsplit(".", 1)[0] if path else "(none found)"
-        self.btn_select_map.text = f"Map: {name(self.selected_map)}"
-        self.btn_select_p0.text = f"Player 1 Strategy: {name(self.selected_p0)}"
-        self.btn_select_p1.text = f"Player 2 Strategy: {name(self.selected_p1)}"
+        self.buttons = [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
 
     def handle_event(self, event: "pygame.event.Event") -> None:
-        if self.picker.handle_event(event):
-            return
         if self.running_match:
             return  # ignore input while a match is in flight — nothing to click into
         for btn in self.buttons:
             btn.handle_event(event)
-
-    # --- map/strategy picker modal ---
-    # Re-globs fresh each time it's opened so a map or strategy saved
-    # after the menu first loaded still shows up.
-
-    def _open_map_picker(self) -> None:
-        files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-        if not files:
-            self.message = "No maps found in maps/"
-            return
-        self.picker.open("Select map", files, lambda path: self._apply_picker_choice("map", path))
-
-    def _open_strategy_picker(self, slot: str) -> None:
-        files = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
-        if not files:
-            self.message = "No strategies found in strategies/"
-            return
-        label = "Player 1" if slot == "p0" else "Player 2"
-        self.picker.open(f"Select {label} strategy", files, lambda path: self._apply_picker_choice(slot, path))
-
-    def _apply_picker_choice(self, slot: str, path: str) -> None:
-        if slot == "map":
-            self.selected_map = path
-        elif slot == "p0":
-            self.selected_p0 = path
-        elif slot == "p1":
-            self.selected_p1 = path
-        self._refresh_selector_labels()
 
     def update(self, dt: float) -> None:
         if not self.running_match:
@@ -163,8 +101,6 @@ class MainMenu:
             self._draw_running_indicator(surface, cx)
         elif self.message:
             draw_text(surface, self.message, (cx - 200, self.screen_size[1] - 60), size=13, color=(220, 200, 120))
-
-        self.picker.draw(surface, self.screen_size)
 
     def _draw_running_indicator(self, surface: "pygame.Surface", cx: int) -> None:
         elapsed = time.monotonic() - self._match_started_at
@@ -205,16 +141,16 @@ class MainMenu:
         if self.running_match:
             return
 
-        # Selections are set once at startup (first map, first two distinct
-        # strategies found) and can be changed via the picker buttons above
-        # — re-check the files still exist rather than trusting a path
-        # picked earlier in the session is still valid (a map/strategy file
-        # could have been deleted, or the menu could have started with none
-        # available at all).
-        missing = [p for p in (self.selected_map, self.selected_p0, self.selected_p1)
-                   if p is None or not os.path.exists(p)]
-        if missing:
-            self.message = "Select a map and both strategies before running a match"
+        # Picking the map/strategies lives entirely in the playback
+        # viewer now (its "Map:"/"P1:"/"P2:" pickers + Restart), not
+        # here — this button's only job is to get a first match running
+        # with sensible defaults so that screen exists to pick on. Globs
+        # fresh each time rather than caching a selection on the menu
+        # itself, since there's no UI here to ever change it anyway.
+        strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
+        maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+        if len(strategies) < 2 or not maps:
+            self.message = "Need >= 2 strategies and >= 1 map to run a match"
             return
 
         self.running_match = True
@@ -222,7 +158,7 @@ class MainMenu:
         self._match_result = None
         self._match_started_at = time.monotonic()
         self._match_thread = threading.Thread(
-            target=self._match_worker, args=([self.selected_p0, self.selected_p1], self.selected_map), daemon=True)
+            target=self._match_worker, args=(strategies[:2], maps[0]), daemon=True)
         self._match_thread.start()
 
     def _match_worker(self, strategy_paths: list[str], map_path: str) -> None:
