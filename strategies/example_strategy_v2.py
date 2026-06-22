@@ -31,7 +31,7 @@ class ExampleStrategyV2(NanoStrategy):
         if nano_ai is None:
             return
 
-        target_hp = self._nearest_unoccupied_hp(map_info)
+        target_hp = self._nearest_unoccupied_hp(map_info, nano_ai.position)
 
         # --- NanoAI ---
 
@@ -39,6 +39,15 @@ class ExampleStrategyV2(NanoStrategy):
             adj = self._adjacent_free(nano_ai.position, map_info)
             if adj != (-1, -1):
                 nano_ai.build("NanoCollector", adj)
+            elif target_hp is not None and nano_ai.position != target_hp.position:
+                # Boxed in: every immediate neighbor is Bone. Confirmed via
+                # execution on maps/vascular_network.json, whose player-0
+                # spawn corner (0, 0) has both cardinal neighbors blocked —
+                # without this, NanoAI sat frozen at spawn for the entire
+                # match, building nothing, scoring 0 every time. Move
+                # toward the target point instead; _adjacent_free will
+                # find an opening once it's somewhere less boxed-in.
+                nano_ai.move_to(target_hp.position)
 
         elif needle is None and target_hp is not None:
             stand_pos = self._approach_pos(target_hp.position, nano_ai.position, map_info)
@@ -80,13 +89,17 @@ class ExampleStrategyV2(NanoStrategy):
         return None
 
     @staticmethod
-    def _nearest_unoccupied_hp(map_info: MapInfo) -> HabitasPointInfo | None:
+    def _nearest_unoccupied_hp(map_info: MapInfo, from_pos: tuple[int, int]) -> HabitasPointInfo | None:
+        # Distance from NanoAI's own actual position, not a hardcoded
+        # (0, 0) — the engine assigns each player's real spawn corner
+        # from its own injection zone, not literally (0, 0); confirmed
+        # via execution this differs when run as player 1 vs player 0.
         best = None
         best_dist = math.inf
         for hp in map_info.habitas_points:
             if hp.owner_id != -1:
                 continue
-            d = abs(hp.position[0]) + abs(hp.position[1])
+            d = abs(hp.position[0] - from_pos[0]) + abs(hp.position[1] - from_pos[1])
             if d < best_dist:
                 best_dist = d
                 best = hp

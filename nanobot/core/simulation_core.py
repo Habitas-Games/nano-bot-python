@@ -208,7 +208,25 @@ class SimulationCore:
     def _default_injection_point(self, player_id: int) -> tuple[int, int]:
         for zone in self._injection_zones:
             if zone["player"] == player_id:
-                return (zone["rect"][0], zone["rect"][1])
+                rx, ry, rw, rh = zone["rect"]
+                if self._map.is_passable(rx, ry):
+                    return (rx, ry)
+                # The zone's own literal corner can be impassable even
+                # when the rest of the zone isn't — confirmed on
+                # maps/vascular_network.json, whose player-0 zone is
+                # (0,0)-(4,4) with a Bone border sealing exactly the
+                # (0, 0) corner while the interior (1,1)-(4,4) is fully
+                # open. Spawning a NanoAI on an impassable cell traps it
+                # there permanently: every adjacent build fails, and
+                # there's no path out for move_to() to find either, since
+                # pathfinding can't escape a cell with no passable
+                # neighbor. Search the rest of the zone for any passable
+                # cell instead of blindly trusting the corner.
+                for yy in range(ry, ry + rh):
+                    for xx in range(rx, rx + rw):
+                        if self._map.is_passable(xx, yy):
+                            return (xx, yy)
+                return (rx, ry)  # zone is entirely impassable; nothing better to offer
         corners = [
             (0, 0),
             (self._map.width - 1, self._map.height - 1),

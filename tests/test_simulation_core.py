@@ -28,6 +28,52 @@ def make_sim(width=10, height=10, players=2):
     return sim
 
 
+class TestDefaultInjectionPoint:
+    def test_skips_impassable_corner_within_an_otherwise_open_zone(self):
+        # Confirmed on maps/vascular_network.json: a 5x5 player-0 zone
+        # (0,0)-(4,4) with a Bone border that happens to seal exactly the
+        # (0, 0) corner, while the rest of the zone is fully passable.
+        # Spawning on an impassable cell traps the NanoAI permanently —
+        # no adjacent cell is buildable, and there's no path out for
+        # move_to() to find either. The fix must pick *some* passable
+        # cell in the zone instead of blindly trusting the corner.
+        m = MapData(10, 10)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        m._cells[0]["density"] = Density.BONE  # (0, 0) only
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 5, 5)}, {"player": 1, "rect": (5, 5, 5, 5)}]
+        sim = SimulationCore(m, [""] * 2, seed=0)
+        sim._init_match_state()
+
+        spawn = next(b.position for b in sim._bots if b.owner_id == 0)
+        assert spawn != (0, 0)
+        assert sim._map.is_passable(spawn[0], spawn[1])
+
+    def test_still_uses_the_corner_when_it_is_passable(self):
+        # No regression for the common case (every existing test fixture
+        # and the bundled simple_tissue.json): an already-passable corner
+        # is used as-is, not replaced by some other cell in the zone.
+        sim = make_sim()
+        spawn = next(b.position for b in sim._bots if b.owner_id == 0)
+        assert spawn == (0, 0)
+
+    def test_falls_back_to_the_corner_if_the_whole_zone_is_impassable(self):
+        # A degenerate map (the entire zone is Bone) has no good answer —
+        # confirms this returns the corner rather than raising, since a
+        # broken map shouldn't crash match setup.
+        m = MapData(10, 10)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        for y in range(3):
+            for x in range(3):
+                m._cells[y * m.width + x]["density"] = Density.BONE
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 3, 3)}, {"player": 1, "rect": (5, 5, 3, 3)}]
+        sim = SimulationCore(m, [""] * 2, seed=0)
+        sim._init_match_state()
+        spawn = next(b.position for b in sim._bots if b.owner_id == 0)
+        assert spawn == (0, 0)
+
+
 class TestStartingAznFromMap:
     def test_default_map_starting_azn_seeds_every_players_bank(self):
         sim = make_sim()  # MapData defaults starting_azn to 150
