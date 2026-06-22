@@ -232,6 +232,54 @@ class TestTransferAction:
         assert sim._player_azn_bank[0] == bank_before + 5
         assert collector.azn_carried == 5
 
+    def test_transfer_to_friendly_container_on_same_cell(self):
+        # Confirms the fix: NanoContainer (capacity 60, transfer 5 in
+        # data/bot_types.json) previously could never receive a transfer
+        # at all — _action_transfer's target search only ever matched
+        # NanoNeedle. "High-capacity storage for long supply chains" was
+        # unreachable without this.
+        sim = make_sim()
+        collector = sim.spawn_bot(0, "NanoCollector", (4, 4))
+        collector.azn_carried = 10
+        container = sim.spawn_bot(0, "NanoContainer", (4, 4))
+        sim._action_transfer(collector, ActionRequest.transfer((4, 4)), [])
+        assert collector.azn_carried == 5
+        assert container.azn_carried == 5
+
+    def test_transfer_to_enemy_container_is_ignored(self):
+        sim = make_sim()
+        collector = sim.spawn_bot(0, "NanoCollector", (4, 4))
+        collector.azn_carried = 10
+        enemy_container = sim.spawn_bot(1, "NanoContainer", (4, 4))
+        sim._action_transfer(collector, ActionRequest.transfer((4, 4)), [])
+        assert enemy_container.azn_carried == 0
+
+    def test_transfer_does_not_target_the_acting_bot_itself(self):
+        # NanoCollector and NanoContainer both now have capacity > 0 *and*
+        # transfer > 0 (unlike NanoNeedle, which has transfer == 0) — the
+        # generalized "any bot with capacity" target search could match
+        # the acting bot against itself if not explicitly excluded,
+        # turning a bank-transfer-at-injection-point into a silent
+        # self-transfer no-op instead. Regression test for exactly that.
+        sim = make_sim()
+        collector = sim.spawn_bot(0, "NanoCollector", (1, 1))  # inside the full-map injection zone
+        collector.azn_carried = 10
+        bank_before = sim._player_azn_bank[0]
+        sim._action_transfer(collector, ActionRequest.transfer((1, 1)), [])
+        assert sim._player_azn_bank[0] == bank_before + 5
+        assert collector.azn_carried == 5
+
+    def test_container_can_relay_to_needle(self):
+        # The full relay chain NanoContainer's description implies:
+        # collector -> container -> needle.
+        sim = make_sim()
+        container = sim.spawn_bot(0, "NanoContainer", (4, 4))
+        container.azn_carried = 10
+        needle = sim.spawn_bot(0, "NanoNeedle", (4, 4))
+        sim._action_transfer(container, ActionRequest.transfer((4, 4)), [])
+        assert container.azn_carried == 5
+        assert needle.azn_carried == 5
+
 
 class TestAttackResolution:
     def test_attack_in_range_damages_enemy(self):
@@ -512,7 +560,41 @@ class TestMovementAndBlocking:
         sim.spawn_bot(1, "NanoBlocker", (4, 3))
         mover.path_remaining = [(4, 3)]
         sim._advance_movement([])
-        assert mover.turns_until_move == 2  # plain LOW density cost, no penalty
+        # MIN_MOVE_COST (1), not LOW density's 2 — density_immune skips the
+        # density-based cost too (see test_density_immune_skips_density_cost),
+        # and the blocker penalty is still exempted as before.
+        assert mover.turns_until_move == 1
+
+    def test_density_immune_skips_density_cost_on_high_density(self):
+        # Confirms the actual bug fix: density_immune previously only
+        # exempted the NanoBlocker penalty above, while still paying full
+        # density-based cost like any other bot — contradicting both
+        # NanoExplorer's "ignores density penalties entirely" description
+        # and nanobot_data.py's own comment on the field. Verified directly
+        # (not just by reading movement_cost) by comparing two bots moving
+        # into the same HIGH-density cell.
+        sim = make_sim()
+        for cell in sim._map._cells:
+            cell["density"] = Density.HIGH
+        explorer = sim.spawn_bot(0, "NanoExplorer", (3, 3))
+        collector = sim.spawn_bot(0, "NanoCollector", (3, 4))
+        explorer.path_remaining = [(4, 3)]
+        collector.path_remaining = [(4, 4)]
+        sim._advance_movement([])
+        assert explorer.turns_until_move == 1   # density-immune: MIN_MOVE_COST
+        assert collector.turns_until_move == 4  # HIGH density cost, paid in full
+
+    def test_density_immune_bot_still_blocked_by_bone(self):
+        # Bone is a structural barrier, not a density tier — density
+        # immunity must not let a bot walk through it.
+        sim = make_sim()
+        sim._map._cells[sim._map.width * 3 + 4]["density"] = Density.BONE
+        mover = sim.spawn_bot(0, "NanoExplorer", (3, 3))
+        mover.path_remaining = [(4, 3)]
+        events = []
+        sim._advance_movement(events)
+        assert mover.position == (3, 3)
+        assert any(e["type"] == "path_blocked" for e in events)
 
     def test_bot_with_remaining_move_timer_does_not_advance(self):
         sim = make_sim()
@@ -538,6 +620,69 @@ class TestStopAndSelfDestruct:
         sim._execute_action(ai, ActionRequest.self_destruct(), events)
         assert ai.is_alive is False
         assert any(e["type"] == "self_destruct" for e in events)
+
+
+class TestOpenIp:
+    def test_open_ip_creates_a_usable_injection_point(self):
+        # Confirms the fix: open_ip() previously only logged an event and
+        # never touched anything _is_at_injection_point checks, so "creates
+        # a new injection point" had zero gameplay effect — a bot standing
+        # there still couldn't bank AZN. Verified end-to-end: a transfer
+        # attempt at the same cell fails before open_ip() and succeeds
+        # after it, not just that the zone list grew.
+        m = MapData(10, 10)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 1, 1)}]  # tiny zone, far from (7, 7)
+        sim = SimulationCore(m, [""] * 2, seed=0)
+        sim._init_match_state()
+
+        creator = sim.spawn_bot(0, "NanoIPCreator", (7, 7))
+        collector = sim.spawn_bot(0, "NanoCollector", (7, 7))
+        collector.azn_carried = 10
+
+        bank_before = sim._player_azn_bank[0]
+        sim._action_transfer(collector, ActionRequest.transfer((7, 7)), [])
+        assert sim._player_azn_bank[0] == bank_before
+        assert collector.azn_carried == 10  # untouched — (7, 7) isn't a zone yet
+
+        events = []
+        sim._action_open_ip(creator, events)
+        assert any(e["type"] == "injection_point_created" for e in events)
+
+        sim._action_transfer(collector, ActionRequest.transfer((7, 7)), [])
+        assert sim._player_azn_bank[0] == bank_before + 5
+        assert collector.azn_carried == 5
+
+    def test_open_ip_only_works_for_nano_ip_creator(self):
+        sim = make_sim()
+        not_a_creator = sim.spawn_bot(0, "NanoCollector", (3, 3))
+        zones_before = len(sim._injection_zones)
+        events = []
+        sim._action_open_ip(not_a_creator, events)
+        assert events == []
+        assert len(sim._injection_zones) == zones_before
+
+    def test_open_ip_called_twice_from_same_spot_does_not_duplicate(self):
+        sim = make_sim()
+        creator = sim.spawn_bot(0, "NanoIPCreator", (5, 5))
+        zones_before = len(sim._injection_zones)
+        sim._action_open_ip(creator, [])
+        sim._action_open_ip(creator, [])
+        assert len(sim._injection_zones) == zones_before + 1
+
+    def test_open_ip_zone_outlives_the_creator(self):
+        # The created zone is a permanent map feature, not tied to the
+        # creator bot's own lifetime — it auto-destructs on its own
+        # countdown, but the depot it placed stays.
+        m = MapData(10, 10)
+        m.injection_zones = []
+        sim = SimulationCore(m, [""] * 2, seed=0)
+        sim._init_match_state()
+        creator = sim.spawn_bot(0, "NanoIPCreator", (5, 5))
+        sim._action_open_ip(creator, [])
+        creator.is_alive = False
+        assert any(z["rect"] == (5, 5, 1, 1) for z in sim._injection_zones)
 
 
 class TestSpawnBot:

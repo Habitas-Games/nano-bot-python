@@ -57,6 +57,22 @@ class MyStrategy(NanoStrategy):
 See `strategies/example_strategy_v2.py` for a fuller example that builds
 a NanoCollector and a NanoNeedle and actually scores points.
 
+Beyond those two, `strategies/` has one focused demo per bot type/mechanic
+that example_strategy_v2 doesn't touch — each is a complete, runnable
+strategy, not a snippet:
+
+- `example_explorer.py` — NanoExplorer's density immunity (it pays flat
+  minimum movement cost through any tissue density).
+- `example_container.py` — NanoContainer as a two-stage AZN relay
+  (collector -> container -> needle).
+- `example_defense.py` — NanoBlocker + NanoWall defending a claimed
+  Habitas Point's chokepoint.
+- `example_combat.py` — defend()/attack, hunting enemy bots in range.
+- `example_ip_creator.py` — NanoIPCreator's open_ip(), banking AZN at a
+  second injection point far from the original spawn.
+- `example_full_roster.py` — all of the above combined into one
+  competitive strategy claiming two Habitas Points.
+
 ## CLI tools
 
 ```bash
@@ -97,7 +113,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-218 unit tests cover the core simulation engine and map-editor logic
+296 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real

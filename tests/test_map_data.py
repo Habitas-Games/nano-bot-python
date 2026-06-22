@@ -107,6 +107,30 @@ class TestMovementCost:
         cost = m.movement_cost((1, 1), (1, 0))  # moving north, with the stream
         assert cost >= 1
 
+    @pytest.mark.parametrize("density", [Density.LOW, Density.MEDIUM, Density.HIGH])
+    def test_density_immune_skips_density_cost(self, density):
+        # NanoExplorer's whole advertised point — "ignores density cost" —
+        # was previously a no-op since this function had no way to express
+        # it at all; density_immune was read onto the bot but never passed
+        # down here. Regardless of which density tier, an immune bot pays
+        # only MIN_MOVE_COST.
+        m = make_map(density=density)
+        assert m.movement_cost((1, 1), (2, 1), density_immune=True) == 1
+
+    def test_density_immune_still_respects_stream(self):
+        # Immunity is specifically to tissue density, not to bloodstream
+        # current — moving against the stream should still cost more than
+        # the bare MIN_MOVE_COST.
+        m = make_map(density=Density.LOW, stream=StreamDir.EAST)
+        cost = m.movement_cost((2, 1), (1, 1), density_immune=True)  # moving west, against current
+        assert cost == 1 + 2  # MIN_MOVE_COST + STREAM_PENALTY
+
+    def test_density_immune_does_not_bypass_bone(self):
+        # Bone is a structural barrier, not a density tier — immunity must
+        # not make it passable.
+        m = make_map(density=Density.BONE)
+        assert m.movement_cost((1, 1), (2, 1), density_immune=True) == -1
+
     @pytest.mark.parametrize("stream,move_delta", [
         (StreamDir.NORTH, (0, -1)),
         (StreamDir.SOUTH, (0, 1)),

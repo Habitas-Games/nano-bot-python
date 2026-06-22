@@ -85,6 +85,22 @@ class TestCostAwareRouting:
         cost = GridPathfinder.path_cost(path, m)
         assert cost == 4  # 4 steps at (3-2)=1 each, with the stream bonus applied
 
+    def test_density_immune_routing_goes_straight_through_high_density(self):
+        # Same map shape as the detour test above, but routed as a
+        # density-immune bot (NanoExplorer): the HIGH-density row now
+        # costs the same MIN_MOVE_COST as the LOW-density detour, so the
+        # straight line (fewer hops, equal per-step cost) should win
+        # instead of detouring around terrain that no longer slows it
+        # down. Confirms find_path's density_immune actually changes the
+        # chosen route, not just that path_cost would compute differently
+        # for an unrelated path.
+        m = blank_map(5, 3, density=Density.LOW)
+        for x in range(5):
+            m._cells[1 * 5 + x]["density"] = Density.HIGH
+        path = GridPathfinder(m).find_path((0, 1), (4, 1), density_immune=True)
+        assert path == [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]
+        assert GridPathfinder.path_cost(path, m, density_immune=True) == 4  # 4 steps at MIN_MOVE_COST each
+
 
 class TestPathCost:
     def test_path_cost_matches_summed_movement_cost(self):

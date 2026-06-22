@@ -69,12 +69,18 @@ class MapData:
             return False
         return self._cells[y * self.width + x]["density"] != Density.BONE
 
-    def movement_cost(self, from_pos: tuple[int, int], to_pos: tuple[int, int]) -> int:
-        """Turns it costs to move from `from_pos` into `to_pos`. -1 if impassable."""
+    def movement_cost(self, from_pos: tuple[int, int], to_pos: tuple[int, int],
+                       density_immune: bool = False) -> int:
+        """Turns it costs to move from `from_pos` into `to_pos`. -1 if impassable.
+
+        density_immune (NanoExplorer) skips the density-based base cost —
+        Bone stays impassable regardless (that's a structural barrier, not
+        a density tier) — but still feels bloodstream current, the same
+        way a regular bot does."""
         if not self.is_passable(to_pos[0], to_pos[1]):
             return -1
         cell = self._cells[to_pos[1] * self.width + to_pos[0]]
-        cost = DENSITY_COST[cell["density"]]
+        cost = MIN_MOVE_COST if density_immune else DENSITY_COST[cell["density"]]
         stream = cell["stream_dir"]
         if stream != StreamDir.NONE:
             move_dir = (to_pos[0] - from_pos[0], to_pos[1] - from_pos[1])

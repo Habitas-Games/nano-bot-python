@@ -101,6 +101,13 @@ class SimulationCore:
         self._player_azn_bank: dict[int, int] = {}
         self._azn_nodes: list[dict] = []
         self._habitas_state: list[dict] = []
+        # Starts as a copy of the map's static zones, then grows during the
+        # match as NanoIPCreator.open_ip() registers new ones — see
+        # _action_open_ip. A copy, not self._map.injection_zones itself,
+        # since the map object may be reused (e.g. across tournament
+        # matches) and shouldn't accumulate one match's IP creations into
+        # the next.
+        self._injection_zones: list[dict] = []
         self._strategies: list[NanoStrategy | None] = []
         self._strategies_loaded = False
 
@@ -155,6 +162,7 @@ class SimulationCore:
         self._habitas_state = [
             {"position": pos, "owner": -1, "azn_stored": 0} for pos in self._map.habitas_points
         ]
+        self._injection_zones = [dict(z) for z in self._map.injection_zones]
 
         if not self._strategies_loaded:
             self._load_strategies()
@@ -189,7 +197,7 @@ class SimulationCore:
         except Exception as e:
             print(f"SimulationCore: player {player_id} choose_injection_point raised: {e}")
             return default_point
-        for zone in self._map.injection_zones:
+        for zone in self._injection_zones:
             if zone["player"] == player_id:
                 rx, ry, rw, rh = zone["rect"]
                 if rx <= chosen[0] < rx + rw and ry <= chosen[1] < ry + rh \
@@ -198,7 +206,7 @@ class SimulationCore:
         return default_point
 
     def _default_injection_point(self, player_id: int) -> tuple[int, int]:
-        for zone in self._map.injection_zones:
+        for zone in self._injection_zones:
             if zone["player"] == player_id:
                 return (zone["rect"][0], zone["rect"][1])
         corners = [
@@ -235,7 +243,7 @@ class SimulationCore:
                 events.append({"type": "path_blocked", "bot_id": bot.id, "at": [next_cell[0], next_cell[1]]})
                 continue
 
-            cost = self._map.movement_cost(bot.position, next_cell)
+            cost = self._map.movement_cost(bot.position, next_cell, density_immune=bot.density_immune)
             if not bot.density_immune:
                 blocker = self._find_enemy_blocker(next_cell, bot.owner_id)
                 if blocker is not None:
@@ -406,7 +414,7 @@ class SimulationCore:
             return
         if target == bot.cached_target and bot.path_remaining:
             return
-        path = self._pathfinder.find_path(bot.position, target)
+        path = self._pathfinder.find_path(bot.position, target, density_immune=bot.density_immune)
         if len(path) <= 1:
             return
         bot.path_remaining = path[1:]
@@ -441,15 +449,23 @@ class SimulationCore:
         if rate == 0:
             return
 
+        # Any friendly bot with storage capacity can receive a transfer —
+        # not just NanoNeedle. NanoContainer's whole advertised purpose
+        # ("high-capacity storage for long supply chains," 60 AZN capacity
+        # in data/bot_types.json) was previously unreachable: this loop
+        # only ever matched NanoNeedle, so a NanoContainer could never
+        # actually receive or hold anything despite having a capacity stat.
         for target in self._bots:
-            if target.type != "NanoNeedle" or not target.is_alive:
+            if target is bot or not target.is_alive:
+                continue
+            target_stats = BotTypeRegistry.get_type(target.type)
+            cap = int(target_stats.get("capacity", 0))
+            if cap <= 0:
                 continue
             if target.owner_id != bot.owner_id or target.position != action.target_position:
                 continue
             if bot.position != action.target_position:
                 return
-            needle_stats = BotTypeRegistry.get_type("NanoNeedle")
-            cap = int(needle_stats.get("capacity", 100))
             room = cap - target.azn_carried
             amount = min(rate, bot.azn_carried, room)
             bot.azn_carried -= amount
@@ -489,8 +505,21 @@ class SimulationCore:
     def _action_open_ip(self, bot: NanoBotData, events: list[dict]) -> None:
         if bot.type != "NanoIPCreator":
             return
+        pos = bot.position
+        # A 1x1 zone at the creator's current position — permanent for the
+        # rest of the match, independent of the creator bot's own later
+        # fate (it auto-destructs on its own countdown; the depot it left
+        # behind doesn't go with it). Guarded against creating a duplicate
+        # if the same player's strategy calls open_ip() again from the
+        # same spot, since move_to-style "fire every turn" is the idiom
+        # the rest of this API encourages.
+        already = any(z["player"] == bot.owner_id and z["rect"] == (pos[0], pos[1], 1, 1)
+                       for z in self._injection_zones)
+        if already:
+            return
+        self._injection_zones.append({"player": bot.owner_id, "rect": (pos[0], pos[1], 1, 1)})
         events.append({"type": "injection_point_created", "player": bot.owner_id,
-                        "pos": [bot.position[0], bot.position[1]]})
+                        "pos": [pos[0], pos[1]]})
 
     # --- helpers ---
 
@@ -522,7 +551,7 @@ class SimulationCore:
         return None
 
     def _is_at_injection_point(self, bot: NanoBotData) -> bool:
-        for zone in self._map.injection_zones:
+        for zone in self._injection_zones:
             if zone["player"] == bot.owner_id:
                 rx, ry, rw, rh = zone["rect"]
                 if rx <= bot.position[0] < rx + rw and ry <= bot.position[1] < ry + rh:

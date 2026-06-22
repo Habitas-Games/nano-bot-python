@@ -24,8 +24,15 @@ class GridPathfinder:
     def __init__(self, map_data: MapData):
         self._map = map_data
 
-    def find_path(self, from_pos: tuple[int, int], to_pos: tuple[int, int]) -> list[tuple[int, int]]:
-        """Returns the path inclusive of both ends, or [] if none / `to` is impassable."""
+    def find_path(self, from_pos: tuple[int, int], to_pos: tuple[int, int],
+                   density_immune: bool = False) -> list[tuple[int, int]]:
+        """Returns the path inclusive of both ends, or [] if none / `to` is impassable.
+
+        density_immune must match what movement_cost() will actually charge
+        a given bot (NanoExplorer) — otherwise the search optimizes for a
+        cost the bot never pays, and can detour around dense terrain a
+        density-immune bot would have crossed just as cheaply as anywhere
+        else."""
         if not self._map.is_passable(to_pos[0], to_pos[1]):
             return []
         if from_pos == to_pos:
@@ -51,7 +58,7 @@ class GridPathfinder:
                 nb = (cur[0] + dx, cur[1] + dy)
                 if not self._map.is_passable(nb[0], nb[1]):
                     continue
-                edge_cost = self._map.movement_cost(cur, nb)
+                edge_cost = self._map.movement_cost(cur, nb, density_immune=density_immune)
                 new_g = cur_g + edge_cost
                 if new_g < g_cost.get(nb, float("inf")):
                     g_cost[nb] = new_g
@@ -61,10 +68,10 @@ class GridPathfinder:
         return []
 
     @staticmethod
-    def path_cost(path: list[tuple[int, int]], map_data: MapData) -> int:
+    def path_cost(path: list[tuple[int, int]], map_data: MapData, density_immune: bool = False) -> int:
         total = 0
         for i in range(1, len(path)):
-            total += map_data.movement_cost(path[i - 1], path[i])
+            total += map_data.movement_cost(path[i - 1], path[i], density_immune=density_immune)
         return total
 
     @staticmethod
