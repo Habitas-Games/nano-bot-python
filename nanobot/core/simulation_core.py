@@ -220,12 +220,16 @@ class SimulationCore:
                 # there permanently: every adjacent build fails, and
                 # there's no path out for move_to() to find either, since
                 # pathfinding can't escape a cell with no passable
-                # neighbor. Search the rest of the zone for any passable
-                # cell instead of blindly trusting the corner.
-                for yy in range(ry, ry + rh):
-                    for xx in range(rx, rx + rw):
-                        if self._map.is_passable(xx, yy):
-                            return (xx, yy)
+                # neighbor. Pick uniformly at random among every passable
+                # cell in the rest of the zone (via the match's own seeded
+                # RNG, so this stays reproducible for a given seed) rather
+                # than always the first one in row-major order — the
+                # corner-bone case shouldn't always relocate to the same
+                # predictable spot.
+                candidates = [(xx, yy) for yy in range(ry, ry + rh) for xx in range(rx, rx + rw)
+                              if self._map.is_passable(xx, yy)]
+                if candidates:
+                    return self._rng.choice(candidates)
                 return (rx, ry)  # zone is entirely impassable; nothing better to offer
         corners = [
             (0, 0),

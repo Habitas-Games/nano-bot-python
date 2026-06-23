@@ -57,6 +57,43 @@ class TestDefaultInjectionPoint:
         spawn = next(b.position for b in sim._bots if b.owner_id == 0)
         assert spawn == (0, 0)
 
+    def test_picks_randomly_among_passable_cells_not_always_the_first(self):
+        # A bone corner with several equally-valid passable cells in the
+        # rest of the zone — confirms the fallback is an actual random
+        # choice (varies across seeds) rather than deterministically
+        # always the first one found in row-major order.
+        def spawn_for_seed(seed: int) -> tuple[int, int]:
+            m = MapData(10, 10)
+            for cell in m._cells:
+                cell["density"] = Density.LOW
+            m._cells[0]["density"] = Density.BONE  # (0, 0) only
+            m.injection_zones = [{"player": 0, "rect": (0, 0, 5, 5)}, {"player": 1, "rect": (5, 5, 5, 5)}]
+            sim = SimulationCore(m, [""] * 2, seed=seed)
+            sim._init_match_state()
+            return next(b.position for b in sim._bots if b.owner_id == 0)
+
+        spawns = {spawn_for_seed(seed) for seed in range(20)}
+        assert len(spawns) > 1, "expected different seeds to pick different passable cells"
+        for spawn in spawns:
+            assert spawn != (0, 0)
+
+    def test_random_choice_uses_the_match_seeded_rng(self):
+        # Reproducibility matters here the same way it does for combat
+        # damage rolls (_resolve_attacks already uses self._rng) — the
+        # same seed must produce the same spawn point every time.
+        m = MapData(10, 10)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        m._cells[0]["density"] = Density.BONE
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 5, 5)}, {"player": 1, "rect": (5, 5, 5, 5)}]
+
+        spawns = []
+        for _ in range(3):
+            sim = SimulationCore(m, [""] * 2, seed=42)
+            sim._init_match_state()
+            spawns.append(next(b.position for b in sim._bots if b.owner_id == 0))
+        assert len(set(spawns)) == 1
+
     def test_falls_back_to_the_corner_if_the_whole_zone_is_impassable(self):
         # A degenerate map (the entire zone is Bone) has no good answer —
         # confirms this returns the corner rather than raising, since a
