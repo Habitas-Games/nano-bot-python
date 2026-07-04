@@ -1,7 +1,5 @@
-"""Drag rectangle to place an injection zone. New zones default to player 0
-— a player-selector UI for zone *creation* (as opposed to editing one
-already loaded from a map) is an open design question, deliberately left
-unresolved here rather than guessed, same call made in the Godot port."""
+"""Drag rectangle to place an injection zone, owned by whichever player
+is selected in the sidebar's Zone Owner toggle (MAP-08)."""
 
 from __future__ import annotations
 
@@ -33,7 +31,7 @@ class ZoneTool(EditorTool):
         if self._drag_start is not None:
             rect = self._compute_rect()
             self.editor.history.save_state(self.editor.doc)
-            ops.place_zone(self.editor.doc, rect, player=0)
+            ops.place_zone(self.editor.doc, rect, player=self.editor.zone_player)
         self._drag_start = None
         self._drag_current = None
         self.editor.preview_rect = None
@@ -46,4 +44,4 @@ class ZoneTool(EditorTool):
         return (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
 
     def get_status_text(self) -> str:
-        return "Tool: Place Zone | Drag to create rectangle (player 1; use Edit tool to reposition)"
+        return f"Tool: Place Zone | Drag to create rectangle (Player {self.editor.zone_player + 1}; use Edit tool to reposition)"

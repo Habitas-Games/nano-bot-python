@@ -815,3 +815,197 @@ class TestFullMatchRun:
         assert log_a.total_turns == log_b.total_turns
         assert log_a.final_scores == log_b.final_scores
         assert log_a.winner_id == log_b.winner_id
+
+
+class TestFogOfWar:
+    def test_enemy_outside_all_scan_radii_is_invisible(self):
+        sim = make_sim(width=30, height=30)
+        # Player 0's only bot is its NanoAI (scan 5) at spawn (0, 0).
+        enemy = sim.spawn_bot(1, "NanoCollector", (20, 20))
+        mi = sim._build_map_info(0, 1)
+        assert all(e["id"] != enemy.id for e in mi.visible_enemies)
+
+    def test_enemy_inside_scan_radius_is_visible(self):
+        sim = make_sim(width=30, height=30)
+        enemy = sim.spawn_bot(1, "NanoCollector", (3, 3))  # dist ~4.2 <= NanoAI scan 5
+        mi = sim._build_map_info(0, 1)
+        assert any(e["id"] == enemy.id for e in mi.visible_enemies)
+
+    def test_explorer_extends_vision(self):
+        sim = make_sim(width=60, height=60)
+        scout = sim.spawn_bot(0, "NanoExplorer", (30, 30))  # scan 30
+        enemy = sim.spawn_bot(1, "NanoCollector", (50, 30))  # dist 20 from scout
+        mi = sim._build_map_info(0, 1)
+        assert any(e["id"] == enemy.id for e in mi.visible_enemies)
+
+    def test_scan_floor_gives_adjacent_awareness_to_scanless_bots(self):
+        sim = make_sim(width=30, height=30)
+        # Move player 0's AI far away; give it a scan-0 collector with an
+        # enemy standing right next to it — SCAN_FLOOR must reveal it.
+        sim._bots[0].position = (25, 25)
+        sim.spawn_bot(0, "NanoCollector", (10, 10))
+        enemy = sim.spawn_bot(1, "NanoCollector", (11, 10))
+        mi = sim._build_map_info(0, 1)
+        assert any(e["id"] == enemy.id for e in mi.visible_enemies)
+
+
+class TestLineOfSight:
+    def test_wall_between_attacker_and_target_blocks_the_shot(self):
+        sim = make_sim(width=20, height=20)
+        attacker = sim.spawn_bot(0, "NanoCollector", (5, 5))
+        sim.spawn_bot(1, "NanoWall", (5, 8))  # on the segment
+        target = sim.spawn_bot(1, "NanoAI", (5, 11))
+        attacker.pending_action = ActionRequest.defend((5, 11))
+        events = []
+        sim._resolve_attacks(events)
+        assert target.hp == target.max_hp
+        assert any(e["type"] == "attack_blocked" for e in events)
+
+    def test_own_wall_blocks_own_shot_too(self):
+        sim = make_sim(width=20, height=20)
+        attacker = sim.spawn_bot(0, "NanoCollector", (5, 5))
+        sim.spawn_bot(0, "NanoWall", (5, 8))  # attacker's own wall
+        target = sim.spawn_bot(1, "NanoAI", (5, 11))
+        attacker.pending_action = ActionRequest.defend((5, 11))
+        sim._resolve_attacks([])
+        assert target.hp == target.max_hp
+
+    def test_bone_blocks_the_shot(self):
+        sim = make_sim(width=20, height=20)
+        sim._map._cells[8 * 20 + 5]["density"] = Density.BONE  # (5, 8)
+        attacker = sim.spawn_bot(0, "NanoCollector", (5, 5))
+        target = sim.spawn_bot(1, "NanoAI", (5, 11))
+        attacker.pending_action = ActionRequest.defend((5, 11))
+        sim._resolve_attacks([])
+        assert target.hp == target.max_hp
+
+    def test_clear_line_still_hits(self):
+        sim = make_sim(width=20, height=20)
+        attacker = sim.spawn_bot(0, "NanoCollector", (5, 5))
+        target = sim.spawn_bot(1, "NanoAI", (5, 11))
+        attacker.pending_action = ActionRequest.defend((5, 11))
+        sim._resolve_attacks([])
+        assert target.hp < target.max_hp
+
+    def test_walled_in_needle_survives_a_lone_attacker(self):
+        # GAME-03's acceptance criterion, direct: needle ringed by walls,
+        # attacker outside the ring, every shot blocked.
+        sim = make_sim(width=20, height=20)
+        needle = sim.spawn_bot(1, "NanoNeedle", (10, 10))
+        for cell in [(9, 10), (11, 10), (10, 9), (10, 11),
+                     (9, 9), (11, 11), (9, 11), (11, 9)]:
+            sim.spawn_bot(1, "NanoWall", cell)
+        attacker = sim.spawn_bot(0, "NanoCollector", (10, 4))
+        for _ in range(10):
+            attacker.pending_action = ActionRequest.defend((10, 10))
+            sim._resolve_attacks([])
+        assert needle.hp == needle.max_hp
+
+
+class TestHabitasExclusivity:
+    def test_needle_build_on_occupied_cell_fails(self):
+        sim = make_sim()
+        sim.spawn_bot(1, "NanoNeedle", (4, 4))  # enemy needle already there
+        builder = sim._bots[0]  # player 0's NanoAI
+        builder.position = (4, 3)
+        sim._player_azn_bank[0] = 100
+        events = []
+        sim._action_build(builder, ActionRequest.build("NanoNeedle", (4, 4)), events)
+        assert any(e["type"] == "build_failed" and e["reason"] == "habitas_occupied" for e in events)
+        assert sim._player_azn_bank[0] == 100  # no charge on failure
+
+    def test_point_reopens_after_needle_dies(self):
+        sim = make_sim()
+        old = sim.spawn_bot(1, "NanoNeedle", (4, 4))
+        old.is_alive = False
+        builder = sim._bots[0]
+        builder.position = (4, 3)
+        sim._player_azn_bank[0] = 100
+        events = []
+        sim._action_build(builder, ActionRequest.build("NanoNeedle", (4, 4)), events)
+        assert any(e["type"] == "bot_built" for e in events)
+
+
+class TestHazards:
+    @staticmethod
+    def make_hazard_sim(path, move_every=1, damage=3, rng_range=1.5, hp=40):
+        m = MapData(20, 20)
+        for cell in m._cells:
+            cell["density"] = Density.LOW
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 2, 2)},
+                              {"player": 1, "rect": (18, 18, 2, 2)}]
+        m.hazards = [{"path": path, "hp": hp, "damage": damage,
+                      "range": rng_range, "move_every": move_every}]
+        sim = SimulationCore(m, [""] * 2, seed=0)
+        sim._init_match_state()
+        return sim
+
+    def test_hazard_patrols_toward_next_waypoint(self):
+        sim = self.make_hazard_sim(path=[(5, 5), (10, 5)], move_every=1)
+        for _ in range(5):
+            sim._advance_hazards([])
+        assert sim._hazards[0]["position"][0] > 5
+
+    def test_hazard_attacks_nearest_bot_in_range(self):
+        sim = self.make_hazard_sim(path=[(5, 5)])
+        victim = sim.spawn_bot(0, "NanoCollector", (5, 6))
+        events = []
+        sim._advance_hazards(events)
+        assert victim.hp < victim.max_hp
+        assert any(e["type"] == "hazard_attack" for e in events)
+
+    def test_hazard_kill_emits_bot_destroyed_event(self):
+        sim = self.make_hazard_sim(path=[(5, 5)], damage=3)
+        victim = sim.spawn_bot(0, "NanoCollector", (5, 6))
+        victim.hp = 1
+        events = []
+        sim._advance_hazards(events)
+        assert not victim.is_alive
+        assert any(e["type"] == "bot_destroyed" and e["by"] == "hazard" for e in events)
+
+    def test_wall_blocks_hazard_movement(self):
+        sim = self.make_hazard_sim(path=[(5, 5), (8, 5)], move_every=1)
+        sim.spawn_bot(0, "NanoWall", (6, 5))
+        for _ in range(6):
+            sim._advance_hazards([])
+        assert sim._hazards[0]["position"] == (5, 5)  # never got past the wall
+
+    def test_collector_can_kill_a_hazard(self):
+        sim = self.make_hazard_sim(path=[(5, 5)], hp=4)
+        attacker = sim.spawn_bot(0, "NanoCollector", (5, 8))
+        events = []
+        for _ in range(10):
+            attacker.pending_action = ActionRequest.defend((5, 5))
+            sim._resolve_attacks(events)
+            if not sim._hazards[0]["alive"]:
+                break
+        assert not sim._hazards[0]["alive"]
+        assert any(e["type"] == "hazard_destroyed" for e in events)
+
+    def test_hazards_recorded_in_frames_and_fog_gated_in_map_info(self):
+        sim = self.make_hazard_sim(path=[(15, 15)])
+        # Far from player 0's spawn-corner NanoAI (scan 5) -> invisible.
+        mi = sim._build_map_info(0, 1)
+        assert mi.hazards == []
+        # Give player 0 an explorer nearby -> visible.
+        sim.spawn_bot(0, "NanoExplorer", (12, 12))
+        mi = sim._build_map_info(0, 1)
+        assert len(mi.hazards) == 1
+
+
+class TestHazardMapRoundTrip:
+    def test_hazards_survive_save_and_load(self, tmp_path):
+        from nanobot.core import map_loader
+        m = MapData(10, 10)
+        m.map_name = "Hazard RT"
+        m.habitas_points.append((5, 5))
+        m.azn_nodes.append({"position": (2, 2), "quantity": 10})
+        m.injection_zones = [{"player": 0, "rect": (0, 0, 2, 2)},
+                              {"player": 1, "rect": (8, 8, 2, 2)}]
+        m.hazards = [{"path": [(3, 3), (6, 3)], "hp": 40, "damage": 3,
+                      "range": 1.5, "move_every": 2}]
+        path = str(tmp_path / "rt.json")
+        assert map_loader.save_to_file(m, path)
+        reloaded = map_loader.load_from_file(path)
+        assert reloaded is not None
+        assert reloaded.hazards == m.hazards

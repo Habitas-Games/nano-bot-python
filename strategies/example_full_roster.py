@@ -271,7 +271,14 @@ class ExampleFullRoster(NanoStrategy):
             return
         nearest_enemy = self._nearest_enemy(map_info, fighter.position)
         if nearest_enemy is None:
-            fighter.stop()
+            # Fog of war: with nothing spotted, stand guard at the first
+            # needle instead of stopping in the open — the fighter's own
+            # presence provides local detection (SCAN_FLOOR) and it's
+            # already in position when a raid arrives.
+            if needle1 is not None and self._manhattan(fighter.position, needle1.position) > 3:
+                fighter.move_to(needle1.position)
+            else:
+                fighter.stop()
             return
         enemy_pos = tuple(nearest_enemy["position"])
         dist = math.hypot(fighter.position[0] - enemy_pos[0], fighter.position[1] - enemy_pos[1])

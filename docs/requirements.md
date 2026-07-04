@@ -28,7 +28,7 @@ alone.
 | G3 | The simulation runs headlessly for fast batch evaluation. | ✅ |
 | G4 | A visual match window lets anyone watch a replay step by step — and re-run with different maps/strategies without leaving it. | ✅ |
 | G5 | Tournament mode ranks all submitted strategies on a leaderboard. | ✅ |
-| G6 | Every bot type and mechanic is genuinely useful somewhere — no dead stats, no strictly-dominant strategy. | 🟡 (see §9) |
+| G6 | Every bot type and mechanic is genuinely useful somewhere — no dead stats, no strictly-dominant strategy. | ✅ (fog makes Scan real; LOS makes walls real; hazards make defense/escorts real) |
 
 ## 3. Scope
 
@@ -51,10 +51,10 @@ is imported as ordinary Python), mobile/web export.
 | MAP-02 | Each cell has a tissue **density**: Low (move cost 2), Medium (3), High (4), or Bone (impassable). | ✅ |
 | MAP-03 | Cells may carry a directional **bloodstream** (N/S/E/W). Moving with the stream: −2 cost; against: +2; minimum cost always 1. | ✅ |
 | MAP-04 | Maps are external JSON files; new maps require no engine changes. | ✅ |
-| MAP-05 | Maps declare **Habitas Points** (scoring objectives), **AZN nodes** (position + finite quantity), and a per-map **starting AZN budget**. | ✅ |
+| MAP-05 | Maps declare **Habitas Points** (scoring objectives), **AZN nodes** (position + finite quantity), a per-map **starting AZN budget**, and optional **white-cell hazards** (patrol path, HP, damage, contact range, speed). | ✅ |
 | MAP-06 | Maps declare one rectangular **injection zone per player**. A player spawns inside their zone; if the requested or default cell is impassable, the engine picks a random passable cell in the zone (seeded RNG — reproducible). | ✅ |
-| MAP-07 | The platform ships with at least **3 pre-built maps** of distinct character (e.g. open tissue, stream highways, bone maze). | 🟡 (2 shipped) |
-| MAP-08 | The map editor can author everything a map JSON can express — including which player owns an injection zone. | 🟡 (new zones are always player 1; no owner selector) |
+| MAP-07 | The platform ships with at least **3 pre-built maps** of distinct character: Simple Tissue (open, beginner, hazard-free), Vascular Network (stream lanes + white-cell patrols), Bone Maze (labyrinth, arteries, patrols). | ✅ |
+| MAP-08 | The map editor can author everything a map JSON can express — including which player owns an injection zone (sidebar Zone Owner toggle). Hazards are displayed and round-trip through save, but are authored in JSON (no hazard tool yet). | 🟡 |
 
 ### 4.2 Nanobot Types
 
@@ -80,7 +80,7 @@ implemented and verified by example strategies that exercise them.
 |---|---|---|
 | STR-01 | A strategy is one `.py` file defining exactly one `NanoStrategy` subclass. Multiple candidate classes in one file fail loudly at load (no silent guessing). | ✅ |
 | STR-02 | Exactly two overrides: `choose_injection_point(map_info)` (once, pre-match) and `what_to_do_next(map_info, my_bots)` (once per turn). | ✅ |
-| STR-03 | `map_info` exposes read-only: cell grid (`get_cell`), habitas points, AZN nodes, visible enemies, turn number, own bank. *Currently all enemies are always visible — see GAME-01.* | 🟡 |
+| STR-03 | `map_info` exposes read-only: cell grid (`get_cell`), habitas points, AZN nodes, turn number, own bank — plus `visible_enemies` and `hazards`, both limited to what lies within some friendly bot's scan radius (Euclidean, floor 2). Static map knowledge is never fogged. | ✅ |
 | STR-04 | `my_bots` is a list of `BotProxy` objects: type, position `(x, y)` tuple, hp/max_hp, azn, is_alive/is_moving/has_path, plus action methods (`move_to`, `collect_from`, `transfer_to`, `defend`, `build`, `open_ip`, `stop`, `self_destruct`). Last queued action per bot per turn wins. | ✅ |
 | STR-05 | `what_to_do_next` has a **50 ms** wall-clock budget; exceeding it (or raising) forfeits that turn with a logged warning — it never crashes the match. | ✅ |
 | STR-06 | Strategies load from `strategies/`; any `.py` file there is a candidate. Load errors mark the entry DQ in tournaments rather than crashing. | ✅ |
@@ -91,9 +91,9 @@ implemented and verified by example strategies that exercise them.
 | ID | Requirement | Status |
 |---|---|---|
 | SIM-01 | A match runs at most **1500 turns**. | ✅ |
-| SIM-02 | Per-turn phase order: (1) timers tick, (2) movement advances, (3) strategies are called, (4) queued actions execute, (5) attacks resolve, (6) auto-destructs fire, (7) NanoAI deaths are registered, (8) scores recomputed from live state. | ✅ |
+| SIM-02 | Per-turn phase order: (1) timers tick, (2) movement advances, (3) hazards move & attack, (4) strategies are called, (5) queued actions execute, (6) attacks resolve, (7) auto-destructs fire, (8) NanoAI deaths are registered, (9) scores recomputed from live state. | ✅ |
 | SIM-03 | Pathfinding is cost-aware A* over directed edges (density + stream modifiers, and the mover's density immunity), not hop-count. | ✅ |
-| SIM-04 | Attack range uses Euclidean distance; damage is `randint(1, max_damage)` from the match RNG. | ✅ |
+| SIM-04 | Attack range uses Euclidean distance; damage is `randint(1, max_damage)` from the match RNG. Attacks additionally require line of sight (GAME-03): Bone and alive NanoWalls on the segment block the shot (`attack_blocked` event). Collectors can also shoot white cells. | ✅ |
 | SIM-05 | Headless mode completes a 1500-turn match on shipped maps in well under 5 s. | ✅ (~0.1 s typical) |
 | SIM-06/07 | Every turn's full state is recorded and exported as a JSON replay (`replays/*.json`). | ✅ |
 | SIM-08 | 2–4 players per match. UI runs 1v1; the headless CLI accepts up to 4 (`--strategy_a..d`). | 🟡 |
@@ -120,7 +120,7 @@ implemented and verified by example strategies that exercise them.
 | VIS-05 | HUD: map name, turn counter, per-player score + bots alive (labels are 1-indexed: "Player 1"/"Player 2"), winner line, map legend, and an always-visible bot inspector. | ✅ |
 | VIS-06 | Habitas Points render neutral (gold) or tinted with the owning team's color; stored AZN is labeled. | ✅ |
 | VIS-07 | **Match setup lives in the match window**: Map / Player 1 / Player 2 pickers plus a Restart button re-simulate in place on a background thread. The main menu is a plain launcher. | ✅ |
-| VIS-08 | Event effects (attack, build, collect, destruct) render as brief animations so a spectator can see *why* the state changed. | ⬜ (UX-03) |
+| VIS-08 | Event effects render where they happen: attack tracers + impact flashes, build sparkles, collect glints, destruction bursts, white-cell pulses — plus an **Events ticker** in the HUD narrating notable moments (builds, kills, expiries) up to the current turn. | ✅ |
 
 ### 4.7 Tournament Mode
 
@@ -172,20 +172,20 @@ What holds the fun back, in priority order:
 
 | ID | Requirement | Status |
 |---|---|---|
-| GAME-01 | **Fog of war.** `visible_enemies` contains only enemies within any friendly bot's Scan radius (Euclidean). Habitas/AZN positions stay global (they're on the map); enemy *bots* must be scouted. Replay stores ground truth; the viewer may show all. | ⬜ |
-| GAME-02 | **Immune-system hazards.** Maps may declare patrolling white-cell hazards (path or radius, HP, contact damage). They attack the nearest bot in range of either player; collectors can fight them; walls block them; blockers slow them. Data-driven per NFR-02. | ⬜ |
-| GAME-03 | **Combat counterplay.** Proposed rule: attacks require line of sight — Bone and alive NanoWalls on the segment block the shot. Acceptance: a needle ringed by walls survives a lone attacker until the walls expire; walls become a real defense with a real upkeep cost. | ❓ decide rule before implementing |
-| GAME-04 | **Habitas exclusivity.** `build("NanoNeedle", p)` fails (logged event) if an alive enemy needle already occupies point `p`. First claim holds until the needle dies. | ❓ confirm rule |
-| GAME-05 | **Third shipped map** with a distinct archetype (bone maze or stream-highway), authored in the map editor. Satisfies MAP-07. | ⬜ |
-| UX-01 | **Replay browser**: open any `replays/*.json` (tournament and headless runs included) from the match window. | ⬜ |
-| UX-02 | **Zone owner selector** in the map editor (completes MAP-08). | ⬜ |
-| UX-03 | **Event VFX + menu art**: brief effect animations for attack/build/collect/destruct (VIS-08) and the existing menu background/logo art wired into the main menu. | ⬜ |
-| UX-04 | **Seed control**: Restart uses a new random seed by default, with the seed shown and re-enterable for exact reruns (GUI currently hardcodes seed 0). | ⬜ |
+| GAME-01 | **Fog of war.** `visible_enemies` contains only enemies within any friendly bot's Scan radius (Euclidean, floor 2 so nothing is blind to an adjacent enemy). Habitas/AZN positions stay global; enemy bots must be scouted. Replays store ground truth; the viewer shows all. | ✅ |
+| GAME-02 | **Immune-system hazards.** Maps declare patrolling white-cell hazards (looping path, HP, contact damage, speed). They attack the nearest bot of either player in range; collectors can shoot them; walls block their movement; blockers slow them. Data-driven per NFR-02; shipped on Vascular Network and Bone Maze. | ✅ |
+| GAME-03 | **Combat counterplay.** Attacks require line of sight — Bone and alive NanoWalls (either player's) on the segment block the shot. Acceptance verified by test: a needle ringed by walls takes zero damage from a lone attacker. `example_defense` demonstrates the affordable form: a watchtower explorer spots raiders and the NanoAI drops a reactive wall on the firing line (builds resolve before attacks). | ✅ |
+| GAME-04 | **Habitas exclusivity.** Building a NanoNeedle on a cell already holding an alive needle fails with a logged `habitas_occupied` event. First claim holds; the point reopens when the needle dies. | ✅ |
+| GAME-05 | **Third shipped map**: Bone Maze — a 50×50 marrow labyrinth with stream arteries, pocketed objectives, and two white-cell patrols. Every objective verified reachable from both spawns with the real pathfinder before shipping. | ✅ |
+| UX-01 | **Replay browser**: the match window's "Replays..." button opens any saved replay (tournament and headless runs included), newest first. | ✅ |
+| UX-02 | **Zone owner selector** in the map editor sidebar (P1/P2 toggle); the status bar names the owner new zones will get. | ✅ |
+| UX-03 | **Event VFX + menu art**: effect animations wired per VIS-08; the main menu uses the background art (title baked in) with buttons in the lower third. | ✅ |
+| UX-04 | **Seed control**: Restart rolls a fresh random seed by default; the seed in use is displayed, and a lock toggle reruns the exact same match. The main menu's first match is random-seeded too. | ✅ |
 
 ## 8. Milestones
 
 | Milestone | Status |
 |---|---|
 | M1 Core engine · M2 Strategy API · M3 Playback · M4 Tournament · M5 Map editor | ✅ Done (see `docs/versioning/`) |
-| M6 **Make it a game** — GAME-01..05 (fog of war, hazards, combat counterplay, habitas exclusivity, third map) | ⬜ Next |
-| M7 **Polish & spectate** — UX-01..04, TRN-05 summary view, SCO-03 decision | ⬜ |
+| M6 **Make it a game** — GAME-01..05 (fog of war, hazards, combat counterplay, habitas exclusivity, third map) | ✅ Done (v0.0.14) |
+| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); remaining: TRN-05 top-3 summary view, SCO-03 decision, editor hazard tool (MAP-08) | 🟡 |

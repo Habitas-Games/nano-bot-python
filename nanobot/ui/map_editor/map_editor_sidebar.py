@@ -24,6 +24,7 @@ class MapEditorSidebar:
         self.on_density = None       # callback(Density)
         self.on_stream_dir = None    # callback(StreamDir)
         self.on_tool = None          # callback(str)
+        self.on_zone_player = None   # callback(int) — 0-indexed owner for new zones
         self.on_load = None
         self.on_save = None
         self.on_clear = None
@@ -31,6 +32,7 @@ class MapEditorSidebar:
 
         self.terrain_group = ButtonGroup()
         self.stream_group = ButtonGroup()
+        self.zone_player_group = ButtonGroup()
         self.tool_group = ButtonGroup()  # Habitas/AZN/Zone/Pan/Edit/Delete — mutually exclusive, tracks active_tool_name
         self._tool_buttons_by_name: dict[str, Button] = {}
         self.undo_btn: Button | None = None
@@ -59,7 +61,7 @@ class MapEditorSidebar:
         # (drawn from self.rect directly) moved to track the new width.
         dx = self.rect.x - old_x
         if dx:
-            for group in (self.terrain_group, self.stream_group, self.tool_group):
+            for group in (self.terrain_group, self.stream_group, self.tool_group, self.zone_player_group):
                 for btn in group.buttons:
                     btn.rect.x += dx
             for btn in self._action_buttons:
@@ -124,6 +126,19 @@ class MapEditorSidebar:
             self._tool_buttons_by_name[tool_name] = btn
         y += size + 10
 
+        # Zone owner — which player a newly-placed injection zone belongs
+        # to (MAP-08: the editor previously always placed player-1 zones,
+        # so a full 2-player map couldn't be authored without hand-editing
+        # the JSON).
+        self._headers.append(("Zone Owner", y))
+        y += 18
+        for i, label in enumerate(["P1", "P2"]):
+            btn = Button((x + i * 50, y, 46, 26), label, pressed=(i == 0),
+                         on_click=lambda idx=i: self._select_zone_player(idx),
+                         tooltip=f"New zones belong to Player {i + 1}")
+            self.zone_player_group.add(btn)
+        y += 26 + 10
+
         # Tools
         self._headers.append(("Tools", y))
         y += 18
@@ -165,6 +180,10 @@ class MapEditorSidebar:
         if self.on_tool:
             self.on_tool(name)
 
+    def _select_zone_player(self, idx: int) -> None:
+        if self.on_zone_player:
+            self.on_zone_player(idx)
+
     def set_active_tool(self, name: str) -> None:
         """Highlight whichever of Habitas/AZN/Zone/Pan/Edit/Delete is active,
         or none of them if the active tool is Terrain/Stream (those show
@@ -194,6 +213,8 @@ class MapEditorSidebar:
             handled = True
         if self.tool_group.handle_event(event):
             handled = True
+        if self.zone_player_group.handle_event(event):
+            handled = True
         for btn in self._action_buttons:
             if btn.handle_event(event):
                 handled = True
@@ -211,11 +232,12 @@ class MapEditorSidebar:
         self.terrain_group.draw(surface)
         self.stream_group.draw(surface)
         self.tool_group.draw(surface)
+        self.zone_player_group.draw(surface)
         for btn in self._action_buttons:
             btn.draw(surface)
 
         # Tooltips drawn last so they overlay everything else.
-        for group in (self.terrain_group, self.stream_group, self.tool_group):
+        for group in (self.terrain_group, self.stream_group, self.tool_group, self.zone_player_group):
             for btn in group.buttons:
                 if btn.hovered and btn.tooltip:
                     self._draw_tooltip(surface, btn)

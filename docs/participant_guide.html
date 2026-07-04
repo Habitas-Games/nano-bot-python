@@ -296,7 +296,10 @@
     <strong>Iterate.</strong> Scrub through all 1 500 turns with the turn slider,
     inspect individual bots, and zoom into any area. Pan with <em>left-drag</em>
     (or middle-drag), zoom with the <em>scroll-wheel</em>, and <em>click</em> a bot
-    (without dragging) to inspect it.
+    (without dragging) to inspect it. Every Restart rolls a new random seed —
+    <em>lock the seed</em> (the "Seed" button) to rerun the exact same match while
+    debugging, and use <em>Replays…</em> to reopen any saved match, tournament
+    games included.
   </p>
 </div>
 
@@ -335,11 +338,12 @@
   <tbody>
     <tr><td class="mono">1</td><td><strong>Timers</strong></td><td>Movement cooldowns and auto-destruct countdowns tick down.</td></tr>
     <tr><td class="mono">2</td><td><strong>Movement</strong></td><td>Bots with a queued path advance one cell (if their cooldown reached 0).</td></tr>
-    <tr><td class="mono">3</td><td><strong>Strategy</strong></td><td><code>what_to_do_next()</code> is called for each player. You have <strong>50 ms</strong> wall-clock; exceeding it forfeits the turn.</td></tr>
-    <tr><td class="mono">4</td><td><strong>Actions</strong></td><td>Commands queued in phase 3 execute: builds, collects, transfers, stops.</td></tr>
-    <tr><td class="mono">5</td><td><strong>Combat</strong></td><td><code>defend()</code> actions fire — attackers deal damage to targets.</td></tr>
-    <tr><td class="mono">6</td><td><strong>Auto-destruct</strong></td><td>Bots whose countdown reached 0 are removed.</td></tr>
-    <tr><td class="mono">7</td><td><strong>Scores</strong></td><td>Scores are recalculated from the current state of Habitas Points.</td></tr>
+    <tr><td class="mono">3</td><td><strong>White cells</strong></td><td>Immune-system hazards patrol one step and bite the nearest bot in contact range — yours or the enemy's.</td></tr>
+    <tr><td class="mono">4</td><td><strong>Strategy</strong></td><td><code>what_to_do_next()</code> is called for each player. You have <strong>50 ms</strong> wall-clock; exceeding it forfeits the turn.</td></tr>
+    <tr><td class="mono">5</td><td><strong>Actions</strong></td><td>Commands queued in phase 4 execute: builds, collects, transfers, stops. <em>Builds land before combat</em> — a wall dropped this turn blocks this turn's shots.</td></tr>
+    <tr><td class="mono">6</td><td><strong>Combat</strong></td><td><code>defend()</code> actions fire — attackers with line of sight deal damage to targets.</td></tr>
+    <tr><td class="mono">7</td><td><strong>Auto-destruct</strong></td><td>Bots whose countdown reached 0 are removed.</td></tr>
+    <tr><td class="mono">8</td><td><strong>Scores</strong></td><td>Scores are recalculated from the current state of Habitas Points.</td></tr>
   </tbody>
 </table>
 
@@ -398,8 +402,32 @@
 
 <h2>Injection zones</h2>
 <p>
-  <img src="../assets/markers/injection_zone.png" alt="Injection zone" class="marker-thumb" style="image-rendering:pixelated;width:32px;height:32px"> Each player has a rectangular zone in a corner of the map. Your NanoAI spawns there,
-  and transferring AZN to your bank requires being inside this zone.
+  <img src="../assets/markers/injection_zone.png" alt="Injection zone" class="marker-thumb" style="image-rendering:pixelated;width:32px;height:32px"> Each player has a rectangular zone in a corner of the map. Your NanoAI spawns there
+  (on a random passable cell of the zone if your chosen cell turns out to be Bone),
+  and transferring AZN to your bank requires being inside one of your injection zones.
+</p>
+
+<h2>White cells (hazards)</h2>
+<p>
+  The body fights back. Some maps declare patrolling <strong>white cells</strong> —
+  pale, pulsing blobs that loop along fixed routes and bite the nearest bot
+  (yours <em>or</em> the enemy's) within contact range each turn. They have HP and can
+  be shot down by NanoCollectors; NanoWalls block their movement and NanoBlockers slow
+  them. Of the shipped maps, <em>Simple Tissue</em> is hazard-free, while
+  <em>Vascular Network</em> and <em>Bone Maze</em> both have patrols — route around
+  them, wall them off, or clear them out.
+</p>
+
+<h2>Fog of war</h2>
+<p>
+  Terrain, Habitas Points, and AZN nodes are anatomy — always visible. Enemy bots and
+  white cells are not: they only appear in <code>map_info.visible_enemies</code> /
+  <code>map_info.hazards</code> while inside the <strong>Scan radius</strong> of at
+  least one of your alive bots (every bot sees at least 2 cells; NanoAI sees 5;
+  NanoExplorer and NanoIPCreator see 30). A NanoCollector can shoot 12 cells but
+  barely see past its own — pair your fighters with an Explorer spotter, and keep one
+  near your needle as a watchtower or the first sign of a raid will be your needle
+  losing HP to something invisible.
 </p>
 
 <!-- ── 5. BOTS ─────────────────────────────────────────────────────────────── -->
@@ -438,7 +466,9 @@
     <div class="stat">Transfer: <strong>5 / turn</strong></div>
     <div class="stat">Damage: <strong>1–5</strong> (range 12)</div>
     <p style="font-size:12px;color:var(--muted);margin-top:8px">
-      Collects AZN from nodes and delivers it to needles or your bank.
+      Collects AZN from nodes and delivers it to needles, containers, or
+      your bank. The only bot that can shoot — but with Scan 0 it needs a
+      spotter to find targets.
     </p>
   </div>
 
@@ -475,8 +505,9 @@
     <div class="stat">Scan: <strong>30</strong></div>
     <div class="stat">Density-immune: <strong>yes</strong></div>
     <p style="font-size:12px;color:var(--muted);margin-top:8px">
-      Moves at the same speed regardless of terrain. Great for scouting
-      and early map reconnaissance.
+      Moves at the same speed regardless of terrain, and its Scan 30 is
+      your team's eyesight under fog — spotter for fighters, watchtower
+      for needles.
     </p>
   </div>
 
@@ -499,8 +530,9 @@
     <div class="stat">HP: <strong>100</strong></div>
     <div class="stat">Auto-destructs: <strong>50 turns</strong></div>
     <p style="font-size:12px;color:var(--muted);margin-top:8px">
-      Completely blocks enemy movement through its cell. Temporary — it
-      self-destructs after 50 turns.
+      Completely blocks enemy movement <em>and enemy shots</em> through
+      its cell (line-of-sight rule). Temporary — it self-destructs after
+      50 turns, so wall reactively rather than permanently.
     </p>
   </div>
 
@@ -558,6 +590,14 @@
   <div class="callout-title">Score resets each turn</div>
   Scores are recalculated from scratch every turn — not accumulated. A needle that
   gets destroyed sets your score from that point to 0. Rush to replant.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">First claim holds</div>
+  Building a NanoNeedle on a point that already holds a living needle fails with a
+  <code>habitas_occupied</code> event — you can't stack a second needle onto an
+  occupied point. To take an enemy point, destroy its needle first; the point
+  reopens the moment it dies.
 </div>
 
 <div class="callout info">
@@ -637,7 +677,7 @@
     </tr>
     <tr>
       <td><code>defend(enemy_position: tuple[int, int])</code></td>
-      <td>Attack any enemy bot on <em>enemy_position</em> if within range. One-shot per turn.</td>
+      <td>Attack the enemy bot — or white cell — on <em>enemy_position</em> if within range <em>and</em> line of sight: Bone and alive NanoWalls (anyone's, including your own) block the shot. One shot per turn; re-issue every turn to keep firing.</td>
     </tr>
     <tr>
       <td><code>open_ip()</code></td>
@@ -660,7 +700,8 @@
     <tr><td><code>azn_bank</code></td><td>int</td><td>Your current AZN build budget</td></tr>
     <tr><td><code>habitas_points</code></td><td>list[HabitasPointInfo]</td><td>All Habitas Points and their state</td></tr>
     <tr><td><code>azn_nodes</code></td><td>list[AZNNodeInfo]</td><td>All AZN nodes and quantities remaining</td></tr>
-    <tr><td><code>visible_enemies</code></td><td>list[dict]</td><td>All visible enemy bots: <code>{id, type, position, hp}</code></td></tr>
+    <tr><td><code>visible_enemies</code></td><td>list[dict]</td><td>Enemy bots within any of your bots' Scan radii: <code>{id, type, position, hp}</code> — see §4 Fog of war</td></tr>
+    <tr><td><code>hazards</code></td><td>list[dict]</td><td>White cells within your Scan radii: <code>{id, position, hp}</code></td></tr>
     <tr><td><code>get_cell(x, y) -&gt; CellInfo | None</code></td><td>CellInfo</td><td>Terrain info for one cell, or <code>None</code> if out of bounds</td></tr>
   </tbody>
 </table>
@@ -750,10 +791,13 @@
       the map at flat minimum cost while everything else wades through tissue.</li>
   <li><code>example_container.py</code> — a two-stage AZN relay: collector → container →
       needle, cutting the collector's round trip in half.</li>
-  <li><code>example_defense.py</code> — NanoBlocker + NanoWall on a chokepoint, with the
-      wall rebuilt after its 50-turn auto-destruct.</li>
-  <li><code>example_combat.py</code> — a dedicated fighting collector hunting enemies
-      with <code>defend()</code>.</li>
+  <li><code>example_defense.py</code> — a watchtower Explorer parked on the needle plus
+      <em>reactive</em> walling: the moment a raider is spotted, the NanoAI drops a
+      NanoWall on the firing line (builds resolve before combat, so the wall beats the
+      shot).</li>
+  <li><code>example_combat.py</code> — artillery + forward observer: a fighting collector
+      shadowing an Explorer spotter, since under fog a fighter can shoot 12 cells but
+      barely see 2.</li>
   <li><code>example_ip_creator.py</code> — <code>open_ip()</code> opens a forward
       injection point so a far-side collector can bank locally.</li>
   <li><code>example_full_roster.py</code> — all of the above combined: two claimed
@@ -787,9 +831,17 @@
 
 <h2>Defence</h2>
 <ul>
-  <li>A NanoWall (50 turns, 25 AZN) on a chokepoint can delay an approaching enemy collector for many turns — time you can use to claim a contested point.</li>
-  <li>A NanoBlocker (persistent, 20 AZN) adds 6 extra turns to every enemy step through its cell — stack two for near-complete shutdown of a corridor.</li>
-  <li>Your NanoNeedle has 150 HP. A single NanoCollector dealing 1–5 damage per turn needs 30–150 turns to destroy it — build a blocker nearby to slow the assault.</li>
+  <li>A NanoWall blocks <em>shots</em> as well as movement. The affordable pattern is reactive: keep an Explorer watchtower at your needle, and when it spots a raider, build a wall on the needle-side cell of the firing line — builds resolve before combat, so the wall goes up before the shot lands.</li>
+  <li>Don't try to keep a permanent wall ring alive: at 25 AZN per 50-turn lifetime per cell, upkeep outruns any collector economy. Spend wall money only when there's something to block.</li>
+  <li>A NanoBlocker (persistent, 20 AZN) adds 6 extra turns to every enemy step through its cell — and slows white cells too.</li>
+  <li>Your NanoNeedle has 150 HP. A single NanoCollector dealing 1–5 damage per turn needs 30–150 turns to destroy it — every blocked shot stretches that further.</li>
+</ul>
+
+<h2>Fog, scouting &amp; white cells</h2>
+<ul>
+  <li>Fighters need spotters: pair every attacking collector with an Explorer, or it will wander blind. Watch the <em>Events</em> panel in the match window to see what your bots actually encountered.</li>
+  <li>White cells attack whoever is closest — including your opponent. A patrol lane between the enemy and your needle is free defense; a patrol across your own supply route is a tax. Route collectors around them, or shoot them down once (they don't respawn).</li>
+  <li>An IP creator's forward injection point doubles as a forward <em>vision</em> anchor only while bots stand there — vision comes from bots, not zones.</li>
 </ul>
 
 <h2>Time budget</h2>

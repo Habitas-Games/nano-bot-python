@@ -1,17 +1,20 @@
-"""Demonstrates defend() (attack): NanoCollector is the only bot type
-with an attack stat (1-5 damage, range 12 — data/bot_types.json), so
-once the economy is running, idle collectors go hunting instead of
-sitting still. defend(enemy_pos) works on any enemy within range
-12 Euclidean distance with no line-of-sight requirement and no need to
-be adjacent (see simulation_core.py's _resolve_attacks) — it has to be
-re-issued with the enemy's current position every turn since a bot
-doesn't auto-track a moving target.
+"""Demonstrates defend() (attack) under fog of war: NanoCollector is
+the only bot type with an attack stat (1-5 damage, range 12 — see
+data/bot_types.json), but its scan is 0 — it can barely see past its
+own cell. Enemies only appear in map_info.visible_enemies while inside
+some friendly bot's scan radius, so a fighter needs a *spotter*: this
+strategy pairs its fighting collector with a NanoExplorer (scan 30)
+scouting toward the enemy's likely corner. Artillery + forward observer.
+
+Attacks also require line of sight — Bone and alive NanoWalls (anyone's)
+block the shot (an "attack_blocked" event is logged). And defend() must
+be re-issued with the enemy's current position every turn; bots don't
+auto-track.
 
 A collector that's actively fighting doesn't also collect or deliver
 that turn (only the last queued action per bot per turn takes effect),
 so this strategy only commits a *second* collector to combat once the
-first one has the economy loop covered, rather than pulling the only
-collector off resource duty.
+first one has the economy loop covered.
 """
 
 from __future__ import annotations
@@ -26,10 +29,14 @@ from nanobot.api.nano_strategy import NanoStrategy
 
 BUILD_COLLECTOR_COST = 20
 BUILD_NEEDLE_COST = 40
+BUILD_EXPLORER_COST = 15
 ATTACK_RANGE = 12
 
 
 class ExampleCombat(NanoStrategy):
+    def __init__(self) -> None:
+        self._spawn_pos: tuple[int, int] | None = None
+
     def choose_injection_point(self, map_info: MapInfo) -> tuple[int, int]:
         return (0, 0)
 
@@ -37,9 +44,12 @@ class ExampleCombat(NanoStrategy):
         nano_ai = self._find_bot(my_bots, "NanoAI")
         collectors = [b for b in my_bots if b.type == "NanoCollector" and b.is_alive]
         needle = self._find_bot(my_bots, "NanoNeedle")
+        scout = self._find_bot(my_bots, "NanoExplorer")
 
         if nano_ai is None:
             return
+        if self._spawn_pos is None:
+            self._spawn_pos = nano_ai.position
 
         target_hp = self._nearest_unoccupied_hp(map_info, nano_ai.position)
 
@@ -59,12 +69,30 @@ class ExampleCombat(NanoStrategy):
                 nano_ai.move_to(stand_pos)
             else:
                 nano_ai.stop()
+        elif scout is None and map_info.azn_bank >= BUILD_EXPLORER_COST:
+            adj = self._adjacent_free(nano_ai.position, map_info)
+            if adj != (-1, -1):
+                nano_ai.build("NanoExplorer", adj)
         elif len(collectors) == 1 and map_info.azn_bank >= BUILD_COLLECTOR_COST:
             adj = self._adjacent_free(nano_ai.position, map_info)
             if adj != (-1, -1):
                 nano_ai.build("NanoCollector", adj)
         else:
             nano_ai.stop()
+
+        # --- Scout: sweep between the enemy's likely spawn corner (the
+        # mirror of ours) and the map center, lighting up targets for
+        # the fighter. Under fog this is what makes combat possible at
+        # all: the fighter's own scan is ~0.
+        if scout is not None:
+            w, h = map_info.size
+            mirror = (w - 1 - self._spawn_pos[0], h - 1 - self._spawn_pos[1])
+            center = (w // 2, h // 2)
+            if not scout.has_path:
+                target = mirror if scout.position != mirror else center
+                if scout.position == center:
+                    target = mirror
+                scout.move_to(target)
 
         if not collectors:
             return
@@ -96,7 +124,12 @@ class ExampleCombat(NanoStrategy):
 
         nearest_enemy = self._nearest_enemy(map_info, fighter.position)
         if nearest_enemy is None:
-            fighter.stop()
+            # Nothing spotted: shadow the scout so the fighter is already
+            # close when a target lights up.
+            if scout is not None and self._manhattan(fighter.position, scout.position) > 4:
+                fighter.move_to(scout.position)
+            else:
+                fighter.stop()
             return
 
         enemy_pos = tuple(nearest_enemy["position"])

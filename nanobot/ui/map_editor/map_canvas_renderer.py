@@ -65,6 +65,7 @@ class MapCanvasRenderer:
         self._draw_zones(surface, m, canvas_rect, zoom, scroll_x, scroll_y, selection)
         self._draw_habitas(surface, m, canvas_rect, zoom, scroll_x, scroll_y, selection)
         self._draw_azn(surface, m, canvas_rect, zoom, scroll_x, scroll_y, selection, azn_hover_index)
+        self._draw_hazards(surface, m, canvas_rect, zoom, scroll_x, scroll_y)
         if preview_rect:
             self._draw_preview_rect(surface, preview_rect, canvas_rect, zoom, scroll_x, scroll_y)
 
@@ -196,6 +197,21 @@ class MapCanvasRenderer:
             font = get_font(12)
             label = font.render(str(azn["quantity"]), True, (255, 255, 255))
             surface.blit(label, label.get_rect(center=(r.centerx, r.top - 10)))
+
+    def _draw_hazards(self, surface, m: MapData, canvas_rect, zoom, scroll_x, scroll_y) -> None:
+        """White-cell hazards: patrol path as a faint dashed-ish polyline,
+        plus a pale blob at the start point. The editor has no hazard tool
+        yet (they're authored in the map JSON), but a creator loading a
+        hazard-bearing map must be able to see where they patrol — invisible
+        hazards that silently round-trip through save would be a trap."""
+        for hz in m.hazards:
+            pts = [self._cell_screen_rect(p[0], p[1], canvas_rect, zoom, scroll_x, scroll_y).center
+                   for p in hz["path"]]
+            if len(pts) > 1:
+                pygame.draw.lines(surface, (225, 228, 244), False, pts, 1)
+            r = self._cell_screen_rect(hz["path"][0][0], hz["path"][0][1], canvas_rect, zoom, scroll_x, scroll_y)
+            pygame.draw.circle(surface, (238, 240, 248), r.center, max(4, r.width // 2 - 1))
+            pygame.draw.circle(surface, (160, 168, 205), r.center, max(2, r.width // 4))
 
     def _draw_preview_rect(self, surface, preview_rect, canvas_rect, zoom, scroll_x, scroll_y) -> None:
         rx, ry, rw, rh = preview_rect

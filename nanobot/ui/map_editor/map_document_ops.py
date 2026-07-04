@@ -213,6 +213,7 @@ def snapshot(m: MapData) -> dict:
         "habitas_points": list(m.habitas_points),
         "azn_nodes": [dict(a) for a in m.azn_nodes],
         "injection_zones": [dict(z) for z in m.injection_zones],
+        "hazards": [{**hz, "path": list(hz["path"])} for hz in m.hazards],
     }
 
 
@@ -224,3 +225,5 @@ def restore(m: MapData, snap: dict) -> None:
     m.habitas_points = list(snap["habitas_points"])
     m.azn_nodes = [dict(a) for a in snap["azn_nodes"]]
     m.injection_zones = [dict(z) for z in snap["injection_zones"]]
+    # .get(): tolerate snapshots taken before hazards existed
+    m.hazards = [{**hz, "path": list(hz["path"])} for hz in snap.get("hazards", [])]

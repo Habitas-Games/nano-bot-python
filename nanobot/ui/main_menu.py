@@ -17,6 +17,7 @@ from __future__ import annotations
 import glob
 import math
 import os
+import random
 import threading
 import time
 
@@ -29,6 +30,14 @@ from nanobot.ui.widgets import Button, draw_text
 STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "strategies")
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "maps")
 REPLAYS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "replays")
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets")
+
+
+def _load_image(rel_path: str) -> "pygame.Surface | None":
+    path = os.path.join(ASSETS_DIR, rel_path)
+    if not os.path.exists(path):
+        return None
+    return pygame.image.load(path)
 
 
 class MainMenu:
@@ -45,6 +54,13 @@ class MainMenu:
         self._match_result: dict | None = None  # set by the thread: {"path": str} or {"error": str}
         self._match_started_at = 0.0
 
+        # Menu art (UX-03): the background image (which has the title baked
+        # into its center panel) existed in assets/ unused; the menu was a
+        # flat fill + SysFont title. Falls back to the old look if missing.
+        self._bg = _load_image("menu/bg_menu.png")
+        self._bg_scaled: "pygame.Surface | None" = None
+        self._bg_scaled_size: tuple[int, int] | None = None
+
         self._build_buttons()
 
     def resize(self, screen_size: tuple[int, int]) -> None:
@@ -54,7 +70,9 @@ class MainMenu:
     def _build_buttons(self) -> None:
         cx = self.screen_size[0] // 2
         w, h, gap = 260, 44, 14
-        y = self.screen_size[1] // 2 - 120
+        # Lower third: the background art carries the title in the middle
+        # of the screen; buttons go below it rather than on top of it.
+        y = int(self.screen_size[1] * 0.66)
 
         self.btn_run = Button((cx - w // 2, y, w, h), "Run Match", on_click=self._run_match)
         y += h + gap
@@ -86,12 +104,22 @@ class MainMenu:
                     self.on_open_playback(result["path"])
 
     def draw(self, surface: "pygame.Surface") -> None:
-        surface.fill((18, 20, 26))
-        title_font_size = 36
-        title = "nano-bot"
         cx = self.screen_size[0] // 2
-        draw_text(surface, title, (cx - len(title) * title_font_size // 4, 80), size=title_font_size, color=(120, 200, 140))
-        draw_text(surface, "Program nanobots. Conquer living tissue.", (cx - 150, 130), size=14, color=(160, 165, 180))
+        if self._bg is not None:
+            if self._bg_scaled_size != self.screen_size:
+                self._bg_scaled = pygame.transform.smoothscale(self._bg, self.screen_size)
+                self._bg_scaled_size = self.screen_size
+            surface.blit(self._bg_scaled, (0, 0))
+        else:
+            surface.fill((18, 20, 26))
+        if self._bg is not None:
+            draw_text(surface, "Program nanobots. Conquer living tissue.",
+                      (cx - 150, int(self.screen_size[1] * 0.60)), size=14, color=(200, 205, 218))
+        else:
+            title_font_size = 36
+            title = "nano-bot"
+            draw_text(surface, title, (cx - len(title) * title_font_size // 4, 80), size=title_font_size, color=(120, 200, 140))
+            draw_text(surface, "Program nanobots. Conquer living tissue.", (cx - 150, 130), size=14, color=(160, 165, 180))
 
         for btn in self.buttons:
             btn.enabled = not self.running_match
@@ -158,13 +186,13 @@ class MainMenu:
         self._match_result = None
         self._match_started_at = time.monotonic()
         self._match_thread = threading.Thread(
-            target=self._match_worker, args=(strategies[:2], maps[0]), daemon=True)
+            target=self._match_worker, args=(strategies[:2], maps[0], random.randrange(1_000_000)), daemon=True)
         self._match_thread.start()
 
-    def _match_worker(self, strategy_paths: list[str], map_path: str) -> None:
+    def _match_worker(self, strategy_paths: list[str], map_path: str, seed: int) -> None:
         try:
             map_data = load_from_file(map_path)
-            sim = SimulationCore(map_data, strategy_paths, seed=0)
+            sim = SimulationCore(map_data, strategy_paths, seed=seed)
             log = sim.run()
 
             os.makedirs(REPLAYS_DIR, exist_ok=True)

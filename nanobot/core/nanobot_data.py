@@ -24,6 +24,7 @@ class NanoBotData:
         self.is_stationary = bool(stats.get("stationary", False))
         self.density_immune = bool(stats.get("density_immune", False))
         self.traversal_penalty = int(stats.get("traversal_penalty", 0))
+        self.scan = int(stats.get("scan", 0))
         if "auto_destruct_turns" in stats:
             self.auto_destruct_countdown = int(stats["auto_destruct_turns"])
 

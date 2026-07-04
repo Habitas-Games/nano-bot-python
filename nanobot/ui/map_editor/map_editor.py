@@ -83,6 +83,7 @@ class MapEditorScreen:
         self.last_paint_pos: tuple[int, int] = (-1, -1)
         self.selected_density = Density.LOW
         self.selected_stream_dir = StreamDir.NORTH
+        self.zone_player = 0  # owner (0-indexed) for newly placed injection zones
         self.edit_selected_type = ""
         self.edit_selected_index = -1
         self.zone_resize_corner = ""
@@ -112,6 +113,7 @@ class MapEditorScreen:
         self.sidebar.on_density = self._on_density_selected
         self.sidebar.on_stream_dir = self._on_stream_selected
         self.sidebar.on_tool = self.activate_tool
+        self.sidebar.on_zone_player = self._set_zone_player
         self.sidebar.on_load = self._open_load_picker
         self.sidebar.on_save = self._start_save_flow
         self.sidebar.on_clear = self._clear_map
@@ -127,6 +129,10 @@ class MapEditorScreen:
         self.sidebar.resize(screen_size)
         self._recompute_canvas_rect()
         self.menu_btn.rect.x = screen_size[0] - 110
+
+    def _set_zone_player(self, idx: int) -> None:
+        self.zone_player = idx
+        self._update_status()
 
     def _fire_back_to_menu(self) -> None:
         if self.on_back_to_menu:

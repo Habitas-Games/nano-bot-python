@@ -114,7 +114,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-301 unit tests cover the core simulation engine and map-editor logic
+319 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real

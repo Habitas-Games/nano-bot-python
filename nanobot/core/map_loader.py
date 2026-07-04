@@ -121,6 +121,18 @@ def _parse_body(data: dict, width: int, height: int) -> MapData:
             "rect": (x1, y1, x2 - x1 + 1, y2 - y1 + 1),
         })
 
+    for hz in data.get("hazards", []):
+        path = [(int(p[0]), int(p[1])) for p in hz.get("path", [])]
+        if not path:
+            continue
+        m.hazards.append({
+            "path": path,
+            "hp": int(hz.get("hp", 40)),
+            "damage": int(hz.get("damage", 3)),
+            "range": float(hz.get("range", 1.5)),
+            "move_every": max(1, int(hz.get("move_every", 3))),
+        })
+
     return m
 
 
@@ -168,6 +180,17 @@ def create_json(m: MapData, map_name: str | None = None, starting_azn: int | Non
             "player": zone["player"],
             "x1": rx, "y1": ry, "x2": rx + rw - 1, "y2": ry + rh - 1,
         })
+
+    # Hazards round-trip even though the editor has no hazard tool yet —
+    # otherwise opening and re-saving a hazard-bearing map in the editor
+    # would silently strip them (the same partial-snapshot data-loss trap
+    # documented for starting_azn in v0.0.2).
+    if m.hazards:
+        out["hazards"] = [
+            {"path": [[p[0], p[1]] for p in hz["path"]], "hp": hz["hp"],
+             "damage": hz["damage"], "range": hz["range"], "move_every": hz["move_every"]}
+            for hz in m.hazards
+        ]
 
     return out
 

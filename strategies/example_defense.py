@@ -1,14 +1,25 @@
-"""Demonstrates NanoBlocker (20 AZN, +6 turns/cell traversal penalty for
-enemies) and NanoWall (25 AZN, fully blocks enemy movement, auto-
-destructs after 50 turns): once a Habitas Point is claimed, build both
-on the cell between the needle and the map's center — the most likely
-direction an opponent approaches from on a map with corner spawns — to
-slow or stop a raid before it reaches the needle.
+"""Demonstrates real defense under fog of war + the line-of-sight
+combat rule (attacks are blocked by Bone and alive NanoWalls — see
+simulation_core.py's _line_blocked).
 
-Both only affect *enemy* movement (a friendly bot walks through either
-one for free — see simulation_core.py's _find_enemy_wall/_find_enemy_blocker,
-which explicitly check owner_id), so placing them doesn't get in your own
-collector's way.
+Standing fortifications don't pay: a wall lasts 50 turns and costs 25,
+so keeping even a 3-cell arc up forever costs ~1.5 AZN/turn against a
+collector economy that nets a fraction of that. What does pay is
+*reactive* defense:
+
+  1. A NanoExplorer (scan 30) parks on the needle as a watchtower —
+     without it the defender is blind: an attacker shoots from range 12
+     while everything else here sees barely past its own cell.
+  2. The NanoAI garrisons the needle. The moment the watchtower spots
+     an armed enemy closing in, the AI drops a NanoWall on the exact
+     needle-side cell of the firing line. Builds resolve before attacks
+     in the turn order, so the wall goes up before the shot lands, and
+     every shot after that logs "attack_blocked".
+  3. A one-off NanoBlocker on the center-facing cell slows anyone who
+     tries to walk around the wall instead.
+
+Wall spend only happens during an actual raid, funded by the collector
+banking its surplus once the needle reaches a 40 pts/turn score floor.
 """
 
 from __future__ import annotations
@@ -27,7 +38,16 @@ BUILD_BLOCKER_COST = 20
 BUILD_WALL_COST = 25
 
 
+NEEDLE_SCORE_FLOOR = 10  # secure a 40 pts/turn floor before saving for walls
+WAR_CHEST = 60           # bank this much for reactive walls, then go back to scoring
+BUILD_EXPLORER_COST = 15
+THREAT_RADIUS = 16  # react when an armed enemy gets this close to the needle
+
+
 class ExampleDefense(NanoStrategy):
+    def __init__(self) -> None:
+        self._spawn_pos: tuple[int, int] | None = None
+
     def choose_injection_point(self, map_info: MapInfo) -> tuple[int, int]:
         return (0, 0)
 
@@ -36,15 +56,21 @@ class ExampleDefense(NanoStrategy):
         collector = self._find_bot(my_bots, "NanoCollector")
         needle = self._find_bot(my_bots, "NanoNeedle")
         blocker = self._find_bot(my_bots, "NanoBlocker")
-        wall = self._find_bot(my_bots, "NanoWall")
+        watchtower = self._find_bot(my_bots, "NanoExplorer")
+        walls = [b for b in my_bots if b.type == "NanoWall" and b.is_alive]
 
         if nano_ai is None:
             return
+        if self._spawn_pos is None:
+            self._spawn_pos = nano_ai.position
 
         target_hp = self._nearest_unoccupied_hp(map_info, nano_ai.position)
 
-        # --- NanoAI: the usual collector + needle economy first, then
-        # spend the rest of the bank fortifying the approach. ---
+        # --- NanoAI build order: collector -> needle -> watchtower
+        # explorer -> blocker. After that it garrisons the needle and
+        # only spends when a raid actually comes. ---
+
+        threat = self._nearest_threat(map_info, needle.position) if needle is not None else None
 
         if collector is None and map_info.azn_bank >= BUILD_COLLECTOR_COST:
             adj = self._adjacent_free(nano_ai.position, map_info)
@@ -59,64 +85,130 @@ class ExampleDefense(NanoStrategy):
                 nano_ai.move_to(stand_pos)
             else:
                 nano_ai.stop()
-        elif needle is not None:
-            choke = self._chokepoint(needle.position, map_info)
-            if choke != (-1, -1):
-                if blocker is None and map_info.azn_bank >= BUILD_BLOCKER_COST \
-                        and self._manhattan(nano_ai.position, choke) == 1:
-                    nano_ai.build("NanoBlocker", choke)
-                elif wall is None and map_info.azn_bank >= BUILD_WALL_COST \
-                        and self._manhattan(nano_ai.position, choke) == 1:
-                    nano_ai.build("NanoWall", choke)
-                elif nano_ai.position != needle.position and self._manhattan(nano_ai.position, choke) != 1:
-                    stand = self._approach_pos(choke, nano_ai.position, map_info)
-                    if nano_ai.position != stand:
-                        nano_ai.move_to(stand)
-                    else:
-                        nano_ai.stop()
-                else:
-                    nano_ai.stop()
+        elif needle is not None and threat is not None and map_info.azn_bank >= BUILD_WALL_COST:
+            # Raid response: wall the needle-side cell of the firing line.
+            shield_cell = self._intercept_cell(needle.position, threat["position"], map_info)
+            if shield_cell is not None and not any(w.position == shield_cell for w in walls):
+                self._go_build(nano_ai, map_info, shield_cell, "NanoWall")
             else:
                 nano_ai.stop()
+        elif needle is not None and watchtower is None and map_info.azn_bank >= BUILD_EXPLORER_COST:
+            adj = self._adjacent_free(nano_ai.position, map_info)
+            if adj != (-1, -1):
+                nano_ai.build("NanoExplorer", adj)
+        elif needle is not None and blocker is None and map_info.azn_bank >= BUILD_BLOCKER_COST:
+            shield = self._shield_cells(needle.position, map_info)
+            if shield:
+                self._go_build(nano_ai, map_info, shield[0], "NanoBlocker")
+            else:
+                nano_ai.stop()
+        elif needle is not None and nano_ai.position != needle.position:
+            nano_ai.move_to(needle.position)  # garrison: stand on the needle, ready to build
         else:
             nano_ai.stop()
 
-        # --- NanoCollector: same collect -> deliver loop as example_strategy_v2. ---
+        # --- Watchtower: park on the needle. Its scan 30 is the alarm
+        # system; without it the first sign of a raid is the needle
+        # losing HP to an invisible attacker 12 cells away. ---
+        if watchtower is not None and needle is not None \
+                and watchtower.position != needle.position and not watchtower.has_path:
+            watchtower.move_to(needle.position)
+
+        # --- NanoCollector: feed the needle up to its score floor, then
+        # switch to banking at the injection zone so the wall upkeep
+        # never runs dry. ---
 
         if collector is None:
             return
 
         nearest_azn = self._nearest_azn(map_info, collector.position)
+        if needle is not None and needle.azn >= NEEDLE_SCORE_FLOOR and collector.azn > 0 \
+                and map_info.azn_bank < WAR_CHEST:
+            # Save for wall money — but only up to the war chest. Hoarding
+            # beyond it (confirmed in a full tournament run) traded away
+            # ~100 pts/turn of needle score for money that peaceful matches
+            # never spend; once the chest is full, every further AZN goes
+            # back into the needle where it scores.
+            deliver_target = self._spawn_pos
+        elif needle is not None and collector.azn > 0 and (nearest_azn is None or collector.azn >= 10):
+            deliver_target = needle.position
+        else:
+            deliver_target = None
 
-        if needle is not None and collector.azn > 0 and (nearest_azn is None or collector.azn >= 10):
-            if collector.position == needle.position:
-                collector.transfer_to(needle.position)
-            else:
-                collector.move_to(needle.position)
+        if deliver_target is not None and collector.position == deliver_target:
+            collector.transfer_to(deliver_target)
+        elif deliver_target is not None and collector.azn >= 10:
+            collector.move_to(deliver_target)
         elif nearest_azn is not None:
             if collector.position == nearest_azn.position:
                 collector.collect_from(nearest_azn.position)
             else:
                 collector.move_to(nearest_azn.position)
+        elif deliver_target is not None and collector.azn > 0:
+            collector.move_to(deliver_target)
+
+    def _go_build(self, nano_ai: BotProxy, map_info: MapInfo,
+                   cell: tuple[int, int], bot_type: str) -> None:
+        if self._manhattan(nano_ai.position, cell) == 1:
+            nano_ai.build(bot_type, cell)
+            return
+        stand = self._approach_pos(cell, nano_ai.position, map_info)
+        if nano_ai.position != stand:
+            nano_ai.move_to(stand)
+        else:
+            nano_ai.stop()
 
     @staticmethod
-    def _chokepoint(needle_pos: tuple[int, int], map_info: MapInfo) -> tuple[int, int]:
-        """The cell adjacent to the needle that's closest to the map's
-        center — the most likely direction a corner-spawned opponent
-        approaches from."""
-        center = (map_info.size[0] / 2, map_info.size[1] / 2)
-        best, best_dist = (-1, -1), math.inf
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            c = (needle_pos[0] + dx, needle_pos[1] + dy)
+    def _nearest_threat(map_info: MapInfo, needle_pos: tuple[int, int]) -> dict | None:
+        best, best_d = None, THREAT_RADIUS
+        for e in map_info.visible_enemies:
+            if e["type"] != "NanoCollector":
+                continue  # only collectors can shoot
+            d = math.hypot(e["position"][0] - needle_pos[0], e["position"][1] - needle_pos[1])
+            if d <= best_d:
+                best_d, best = d, e
+        return best
+
+    @staticmethod
+    def _intercept_cell(needle_pos: tuple[int, int], enemy_pos: tuple[int, int],
+                         map_info: MapInfo) -> tuple[int, int] | None:
+        """The needle's neighbor cell in the enemy's direction — the first
+        cell every shot on the needle must cross."""
+        sx = (enemy_pos[0] > needle_pos[0]) - (enemy_pos[0] < needle_pos[0])
+        sy = (enemy_pos[1] > needle_pos[1]) - (enemy_pos[1] < needle_pos[1])
+        c = (needle_pos[0] + sx, needle_pos[1] + sy)
+        if c == needle_pos:
+            return None
+        if c[0] < 0 or c[1] < 0 or c[0] >= map_info.size[0] or c[1] >= map_info.size[1]:
+            return None
+        cell = map_info.get_cell(c[0], c[1])
+        if cell is None or cell.is_bone:
+            return None
+        return c
+
+    @staticmethod
+    def _shield_cells(needle_pos: tuple[int, int], map_info: MapInfo) -> list[tuple[int, int]]:
+        """Three cells on the map-center-facing side of the needle — the
+        two center-facing cardinals plus the diagonal between them. Shots
+        from the whole center-side quadrant have to cross one of these,
+        so keeping walls alive on them blanks that entire approach cone
+        (Bone and the map edge cover much of the rest on corner maps)."""
+        cx, cy = map_info.size[0] / 2, map_info.size[1] / 2
+        sx = 1 if cx >= needle_pos[0] else -1
+        sy = 1 if cy >= needle_pos[1] else -1
+        candidates = [
+            (needle_pos[0] + sx, needle_pos[1]),
+            (needle_pos[0], needle_pos[1] + sy),
+            (needle_pos[0] + sx, needle_pos[1] + sy),
+        ]
+        cells = []
+        for c in candidates:
             if c[0] < 0 or c[1] < 0 or c[0] >= map_info.size[0] or c[1] >= map_info.size[1]:
                 continue
             cell = map_info.get_cell(c[0], c[1])
-            if cell is None or cell.is_bone:
-                continue
-            d = (c[0] - center[0]) ** 2 + (c[1] - center[1]) ** 2
-            if d < best_dist:
-                best_dist, best = d, c
-        return best
+            if cell is not None and not cell.is_bone:
+                cells.append(c)
+        return cells
 
     @staticmethod
     def _find_bot(bots: list[BotProxy], type_name: str) -> BotProxy | None:

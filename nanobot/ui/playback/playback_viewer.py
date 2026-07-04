@@ -14,6 +14,7 @@ from __future__ import annotations
 import glob
 import math
 import os
+import random
 import threading
 import time
 
@@ -72,6 +73,17 @@ def _load_bot_sprite(bot_type: str) -> "pygame.Surface | None":
     return _load(os.path.join("bots", f"bot_{bot_type.lower()}.png"))
 
 
+def _load_fx(prefix: str) -> list["pygame.Surface"]:
+    """Load fx frame sequences (assets/fx/fx_<prefix>_NN.png)."""
+    frames = []
+    for i in range(12):
+        surf = _load(os.path.join("fx", f"fx_{prefix}_{i:02d}.png"))
+        if surf is None:
+            break
+        frames.append(surf)
+    return frames
+
+
 class PlaybackViewer:
     def __init__(self, screen_size: tuple[int, int], replay_path: str):
         self.screen_size = screen_size
@@ -95,6 +107,23 @@ class PlaybackViewer:
         self.azn_texture = _load("markers/azn_node.png")
         self._scaled_cache: dict[tuple, "pygame.Surface"] = {}
         self._owned_tint_cache: dict[tuple, "pygame.Surface"] = {}
+
+        # Event VFX (VIS-08): short animated effects drawn over the cell an
+        # event happened in, so a spectator can see *why* the state changed.
+        # They loop while the frame is current — informative even paused.
+        self.fx = {
+            "attack": _load_fx("attack"),
+            "destruct": _load_fx("destruct"),
+            "collect": _load_fx("azn_collect"),
+            "built": _load_fx("bot_built"),
+        }
+        self._fx_clock = 0.0
+
+        # Seed control (UX-04): Restart rolls a fresh random seed unless
+        # locked, and the seed in use is always shown — an exact rerun is
+        # one lock-click away instead of impossible.
+        self.match_seed: int | None = None
+        self.seed_locked = False
 
         self.playing = False
         self.speed_index = 2  # 1.0x
@@ -170,6 +199,46 @@ class PlaybackViewer:
         self.current_frame = 0
         self.selected_bot_id = None
         self._accum = 0.0
+        self._index_replay()
+
+    def _index_replay(self) -> None:
+        """Precompute id -> (owner, type) and the notable-event timeline
+        used by the HUD ticker, in one pass over the frames."""
+        self._bot_meta: dict[int, tuple[int, str]] = {}
+        self._timeline: list[tuple[int, str]] = []
+        self._has_hazards = False
+        if self.log is None:
+            return
+        for f in self.log.frames:
+            if f.get("hazards"):
+                self._has_hazards = True
+            for b in f["bots"]:
+                if b["id"] not in self._bot_meta:
+                    self._bot_meta[b["id"]] = (b["owner"], b["type"])
+            for e in f.get("events", []):
+                text = self._event_text(e)
+                if text:
+                    self._timeline.append((f["turn"], text))
+
+    def _event_text(self, e: dict) -> str | None:
+        t = e.get("type")
+        if t == "bot_built":
+            owner, typ = self._bot_meta.get(e["new_bot"], (None, e.get("type_name", "?")))
+            return f"P{owner + 1} built {e.get('type_name', typ)}" if owner is not None else None
+        if t == "bot_destroyed":
+            owner, typ = self._bot_meta.get(e["bot_id"], (e.get("owner"), "bot"))
+            cause = {"attack": "shot down", "hazard": "killed by white cell"}.get(e.get("by"), "destroyed")
+            return f"P{owner + 1} {typ} {cause}"
+        if t in ("auto_destruct", "self_destruct"):
+            owner, typ = self._bot_meta.get(e["bot_id"], (None, "bot"))
+            if owner is None:
+                return None
+            return f"P{owner + 1} {typ} expired" if t == "auto_destruct" else f"P{owner + 1} {typ} self-destructed"
+        if t == "hazard_destroyed":
+            return "White cell destroyed"
+        if t == "injection_point_created":
+            return f"P{e['player'] + 1} opened injection point"
+        return None
 
     def _resolve_map_path(self, map_name: str) -> str | None:
         maps_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
@@ -222,6 +291,13 @@ class PlaybackViewer:
         self.btn_select_p1 = Button((x2, y2, 230, sel_h), "", on_click=lambda: self._open_strategy_picker("p1"))
         x2 += 230 + 14
         self.btn_restart = Button((x2, y2, 100, sel_h), "Restart", icon=icons.play_icon(14), on_click=self._restart_match)
+        x2 += 100 + 8
+        self.btn_load_replay = Button((x2, y2, 96, sel_h), "Replays...", on_click=self._open_replay_picker,
+                                       tooltip="Open any saved replay (tournament and headless runs included)")
+        x2 += 96 + 8
+        self.btn_seed_lock = Button((x2, y2, 118, sel_h), "", toggle=True, on_click=self._toggle_seed_lock,
+                                     tooltip="Locked: Restart reruns the exact same match. Unlocked: new random seed each time.")
+        self._refresh_seed_label()
         self._refresh_selector_labels()
 
         self._compute_hud_layout()
@@ -232,7 +308,8 @@ class PlaybackViewer:
 
         self.controls = [self.btn_play, self.btn_step_back, self.btn_step_fwd,
                           self.btn_speed_down, self.btn_speed_up, self.btn_back, self.turn_slider,
-                          self.btn_select_map, self.btn_select_p0, self.btn_select_p1, self.btn_restart]
+                          self.btn_select_map, self.btn_select_p0, self.btn_select_p1, self.btn_restart,
+                          self.btn_load_replay, self.btn_seed_lock]
 
     def _refresh_selector_labels(self) -> None:
         def name(path: str | None) -> str:
@@ -265,6 +342,36 @@ class PlaybackViewer:
             self.selected_p1 = path
         self._refresh_selector_labels()
 
+    def _toggle_seed_lock(self) -> None:
+        self.seed_locked = self.btn_seed_lock.pressed
+        self._refresh_seed_label()
+
+    def _refresh_seed_label(self) -> None:
+        seed_text = "—" if self.match_seed is None else str(self.match_seed)
+        self.btn_seed_lock.text = f"Seed {seed_text} {'●' if self.seed_locked else '○'}"
+        self.btn_seed_lock.pressed = self.seed_locked
+
+    def _open_replay_picker(self) -> None:
+        files = sorted(glob.glob(os.path.join(REPLAYS_DIR, "*.json")),
+                        key=os.path.getmtime, reverse=True)
+        files = [f for f in files if not f.endswith("tournament_results.json")]
+        if not files:
+            self.match_message = "No replays found in replays/"
+            return
+        self.picker.open("Open replay", files[:14], self._load_picked_replay)
+
+    def _load_picked_replay(self, path: str) -> None:
+        self.playing = False
+        self.btn_play.icon = icons.play_icon(22)
+        self._load_replay(path)
+        self._init_selection_from_log()
+        self._refresh_selector_labels()
+        max_frame = len(self.log.frames) - 1 if self.log and self.log.frames else 0
+        self.turn_slider.set_range(0, max_frame)
+        self.turn_slider.set_value(0)
+        self._compute_hud_layout()
+        self.match_message = f"Loaded {os.path.basename(path)}"
+
     def _restart_match(self) -> None:
         if self.running_match:
             return
@@ -274,18 +381,24 @@ class PlaybackViewer:
             self.match_message = "Select a map and both strategies before restarting"
             return
 
+        if not (self.seed_locked and self.match_seed is not None):
+            self.match_seed = random.randrange(1_000_000)
+        self._refresh_seed_label()
+
         self.running_match = True
         self.match_message = ""
         self._match_result = None
         self._match_started_at = time.monotonic()
         self._match_thread = threading.Thread(
-            target=self._match_worker, args=(self.selected_map, [self.selected_p0, self.selected_p1]), daemon=True)
+            target=self._match_worker,
+            args=(self.selected_map, [self.selected_p0, self.selected_p1], self.match_seed),
+            daemon=True)
         self._match_thread.start()
 
-    def _match_worker(self, map_path: str, strategy_paths: list[str]) -> None:
+    def _match_worker(self, map_path: str, strategy_paths: list[str], seed: int) -> None:
         try:
             map_data = load_from_file(map_path)
-            sim = SimulationCore(map_data, strategy_paths, seed=0)
+            sim = SimulationCore(map_data, strategy_paths, seed=seed)
             log = sim.run()
 
             os.makedirs(REPLAYS_DIR, exist_ok=True)
@@ -324,6 +437,11 @@ class PlaybackViewer:
         layout["legend_header"] = y
         y += 20
         layout["legend_rows"] = y
+        legend_rows = 7 + (1 if getattr(self, "_has_hazards", False) else 0)
+        y += legend_rows * 16 + 10
+        layout["ticker_header"] = y
+        y += 20
+        layout["ticker_rows"] = y
         self._hud_layout = layout
 
     def _jump_to(self, frame_index: int) -> None:
@@ -355,6 +473,7 @@ class PlaybackViewer:
     # --- update / events ---
 
     def update(self, dt: float) -> None:
+        self._fx_clock += dt
         if self.running_match:
             if self._match_thread is not None and not self._match_thread.is_alive():
                 self.running_match = False
@@ -487,7 +606,9 @@ class PlaybackViewer:
         self._draw_map(surface)
         self._draw_habitas(surface, frame)
         self._draw_azn(surface, frame)
+        self._draw_hazards_frame(surface, frame)
         self._draw_bots(surface, frame)
+        self._draw_effects(surface, frame)
         surface.set_clip(prev_clip)
 
         # Keep the slider's handle in sync regardless of what moved
@@ -679,6 +800,83 @@ class PlaybackViewer:
             self.bot_sprites[bot_type] = _load_bot_sprite(bot_type)
         return self.bot_sprites[bot_type]
 
+    def _draw_hazards_frame(self, surface: "pygame.Surface", frame: dict) -> None:
+        """White cells: pale pulsing blobs with a nucleus — drawn
+        procedurally (no sprite asset exists for them) but sized and
+        animated so they read as alive, hostile tissue."""
+        for h in frame.get("hazards", []):
+            if not h.get("alive", True):
+                continue
+            r = self._cell_rect(h["pos"][0], h["pos"][1])
+            pulse = 1.0 + 0.10 * math.sin(self._fx_clock * 4.0 + h["id"] * 1.7)
+            radius = int(r.width * 0.48 * pulse)
+            center = r.center
+            body = pygame.Surface((radius * 4, radius * 4), pygame.SRCALPHA)
+            pygame.draw.circle(body, (238, 240, 248, 215), (radius * 2, radius * 2), radius)
+            pygame.draw.circle(body, (205, 210, 232, 235), (radius * 2, radius * 2), int(radius * 0.55))
+            pygame.draw.circle(body, (160, 168, 205, 255), (radius * 2, radius * 2), int(radius * 0.25))
+            surface.blit(body, (center[0] - radius * 2, center[1] - radius * 2))
+
+    def _fx_frame(self, kind: str) -> "pygame.Surface | None":
+        frames = self.fx.get(kind) or []
+        if not frames:
+            return None
+        return frames[int(self._fx_clock * 10) % len(frames)]
+
+    def _draw_effects(self, surface: "pygame.Surface", frame: dict) -> None:
+        """Overlay this turn's events where they happened: attack tracers,
+        impact/build/collect/destruct animations. Loops while the frame is
+        current, so stepping through turns shows exactly what changed."""
+        bot_pos = {b["id"]: tuple(b["pos"]) for b in frame["bots"]}
+        hazard_pos = {h["id"]: tuple(h["pos"]) for h in frame.get("hazards", [])}
+        size = int(CELL_SIZE * self.zoom * 1.7)
+
+        def blit_fx(kind: str, cell: tuple[int, int]) -> None:
+            img = self._fx_frame(kind)
+            if img is None:
+                return
+            r = self._cell_rect(cell[0], cell[1])
+            scaled = pygame.transform.smoothscale(img, (size, size))
+            surface.blit(scaled, (r.centerx - size // 2, r.centery - size // 2))
+
+        def tracer(src: tuple[int, int] | None, dst: tuple[int, int],
+                    color: tuple[int, int, int], width: int = 2) -> None:
+            if src is None:
+                return
+            a = self._cell_rect(src[0], src[1]).center
+            b = self._cell_rect(dst[0], dst[1]).center
+            pygame.draw.line(surface, color, a, b, width)
+
+        for e in frame.get("events", []):
+            t = e.get("type")
+            if t == "attack":
+                at = tuple(e.get("at", (0, 0)))
+                tracer(bot_pos.get(e.get("attacker")), at, (255, 235, 130))
+                blit_fx("attack", at)
+            elif t == "attack_blocked":
+                at = tuple(e.get("at", (0, 0)))
+                tracer(bot_pos.get(e.get("attacker")), at, (120, 120, 130), 1)
+            elif t == "hazard_attack":
+                at = tuple(e.get("at", (0, 0)))
+                tracer(hazard_pos.get(e.get("hazard")), at, (235, 238, 250))
+                blit_fx("attack", at)
+            elif t == "bot_built":
+                pos = bot_pos.get(e.get("new_bot"))
+                if pos:
+                    blit_fx("built", pos)
+            elif t == "azn_collected":
+                node = e.get("node")
+                if node:
+                    blit_fx("collect", tuple(node))
+            elif t in ("bot_destroyed", "hazard_destroyed"):
+                at = e.get("at")
+                if at:
+                    blit_fx("destruct", tuple(at))
+            elif t in ("auto_destruct", "self_destruct"):
+                pos = bot_pos.get(e.get("bot_id"))
+                if pos:
+                    blit_fx("destruct", pos)
+
     # Same legend the Godot HUD shows (hud.gd's legend_entries) — texture
     # + label pairs, reusing the textures already loaded for the canvas
     # itself rather than loading separate copies.
@@ -725,6 +923,22 @@ class PlaybackViewer:
                 surface.blit(self._scaled(tex, 12), (x + 12, y + 1))
             draw_text(surface, label, (x + 30, y), size=10, color=(185, 188, 196))
             y += 16
+        if self._has_hazards:
+            pygame.draw.circle(surface, (238, 240, 248), (x + 18, y + 7), 6)
+            pygame.draw.circle(surface, (160, 168, 205), (x + 18, y + 7), 3)
+            draw_text(surface, "White cell (attacks all bots)", (x + 30, y), size=10, color=(185, 188, 196))
+            y += 16
+
+        # Event ticker: the last few notable events up to the current turn
+        # — the story of the match so far, wherever you've scrubbed to.
+        draw_text(surface, "Events", (x + 12, L["ticker_header"]), size=12, color=(160, 165, 180))
+        recent = [(t, txt) for t, txt in self._timeline if t <= frame["turn"]][-5:]
+        ty = L["ticker_rows"]
+        if not recent:
+            draw_text(surface, "Nothing yet.", (x + 12, ty), size=10, color=(120, 124, 138))
+        for t, txt in recent:
+            draw_text(surface, f"T{t}  {txt}", (x + 12, ty), size=10, color=(200, 203, 214))
+            ty += 15
 
     def _draw_inspector(self, surface: "pygame.Surface", frame: dict) -> None:
         # Always visible (placeholder text when nothing's selected) rather

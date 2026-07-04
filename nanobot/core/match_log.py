@@ -18,15 +18,23 @@ class MatchLog:
         self.total_turns = 0
 
     def record_frame(self, turn: int, scores: dict, bots: list[NanoBotData],
-                      azn_nodes: list[dict], habitas_points: list[dict], events: list[dict]) -> None:
-        self.frames.append({
+                      azn_nodes: list[dict], habitas_points: list[dict], events: list[dict],
+                      hazards: list[dict] | None = None) -> None:
+        frame = {
             "turn": turn,
             "scores": dict(scores),
             "bots": self._serialize_bots(bots),
             "azn_nodes": self._serialize_azn(azn_nodes),
             "habitas_points": self._serialize_habitas(habitas_points),
             "events": list(events),
-        })
+        }
+        if hazards:
+            frame["hazards"] = [
+                {"id": h["id"], "pos": [h["position"][0], h["position"][1]],
+                 "hp": h["hp"], "alive": h["alive"]}
+                for h in hazards
+            ]
+        self.frames.append(frame)
 
     def save_to_file(self, path: str) -> bool:
         directory = os.path.dirname(path)

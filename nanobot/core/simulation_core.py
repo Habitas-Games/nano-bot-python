@@ -23,6 +23,10 @@ from nanobot.api.nano_strategy import NanoStrategy
 
 MAX_TURNS = 1500
 STRATEGY_TIMEOUT_MS = 50
+# Fog of war (GAME-01): every alive bot grants sight in at least this
+# radius even if its scan stat is 0 — a bot that can't notice an enemy
+# standing next to it reads as a bug, not a mechanic.
+SCAN_FLOOR = 2
 
 
 def _load_strategy_instance(path: str) -> NanoStrategy | None:
@@ -108,6 +112,10 @@ class SimulationCore:
         # matches) and shouldn't accumulate one match's IP creations into
         # the next.
         self._injection_zones: list[dict] = []
+        # Runtime immune-system hazards (GAME-02), built from map.hazards
+        # at match start: {"id", "path", "path_index", "position", "hp",
+        # "max_hp", "damage", "range", "move_every", "cooldown", "alive"}.
+        self._hazards: list[dict] = []
         self._strategies: list[NanoStrategy | None] = []
         self._strategies_loaded = False
 
@@ -128,6 +136,7 @@ class SimulationCore:
 
             self._decrement_timers()
             self._advance_movement(events)
+            self._advance_hazards(events)
             self._call_strategies(turn)
             self._apply_action_queues(events)
             self._resolve_attacks(events)
@@ -136,7 +145,8 @@ class SimulationCore:
             self._update_scores()
 
             log.record_frame(turn, dict(self._scores), self._bots,
-                              self._azn_nodes, self._habitas_state, events)
+                              self._azn_nodes, self._habitas_state, events,
+                              hazards=self._hazards)
 
             if self._check_end_conditions():
                 last_turn = turn
@@ -163,6 +173,14 @@ class SimulationCore:
             {"position": pos, "owner": -1, "azn_stored": 0} for pos in self._map.habitas_points
         ]
         self._injection_zones = [dict(z) for z in self._map.injection_zones]
+        self._hazards = [
+            {"id": i, "path": list(hz["path"]), "path_index": 0,
+             "position": hz["path"][0], "hp": hz["hp"], "max_hp": hz["hp"],
+             "damage": hz["damage"], "range": hz["range"],
+             "move_every": hz["move_every"], "cooldown": hz["move_every"],
+             "alive": True}
+            for i, hz in enumerate(self._map.hazards)
+        ]
 
         if not self._strategies_loaded:
             self._load_strategies()
@@ -319,12 +337,37 @@ class SimulationCore:
             dist = ((bot.position[0] - target_pos[0]) ** 2 + (bot.position[1] - target_pos[1]) ** 2) ** 0.5
             if dist > atk_range:
                 continue
+            if self._line_blocked(bot.position, target_pos):
+                events.append({"type": "attack_blocked", "attacker": bot.id,
+                                "at": [target_pos[0], target_pos[1]]})
+                continue
+            hit = False
             for target in self._bots:
                 if target.owner_id != bot.owner_id and target.is_alive and target.position == target_pos:
                     dmg = self._rng.randint(1, max_damage)
                     target.take_damage(dmg)
-                    events.append({"type": "attack", "attacker": bot.id, "target": target.id, "damage": dmg})
+                    events.append({"type": "attack", "attacker": bot.id, "target": target.id,
+                                    "damage": dmg, "at": [target_pos[0], target_pos[1]]})
+                    if not target.is_alive:
+                        events.append({"type": "bot_destroyed", "bot_id": target.id,
+                                        "owner": target.owner_id, "by": "attack",
+                                        "at": [target_pos[0], target_pos[1]]})
+                    hit = True
                     break
+            if not hit:
+                # No enemy bot there — a white-cell hazard on that cell can
+                # be attacked instead (collectors can fight the immune system).
+                for hz in self._hazards:
+                    if hz["alive"] and hz["position"] == target_pos:
+                        dmg = self._rng.randint(1, max_damage)
+                        hz["hp"] = max(0, hz["hp"] - dmg)
+                        events.append({"type": "attack", "attacker": bot.id, "target": f"hazard_{hz['id']}",
+                                        "damage": dmg, "at": [target_pos[0], target_pos[1]]})
+                        if hz["hp"] == 0:
+                            hz["alive"] = False
+                            events.append({"type": "hazard_destroyed", "hazard": hz["id"],
+                                            "at": [target_pos[0], target_pos[1]]})
+                        break
 
     def _tick_auto_destruct(self, events: list[dict]) -> None:
         for bot in self._bots:
@@ -404,6 +447,69 @@ class SimulationCore:
         most_banked = max(bank_counts.values())
         tied = [pid for pid in tied if bank_counts[pid] == most_banked]
         return tied[0]  # still tied after both criteria — first player_id, same as before
+
+
+    # --- immune-system hazards (GAME-02) ---
+
+    def _advance_hazards(self, events: list[dict]) -> None:
+        for hz in self._hazards:
+            if not hz["alive"]:
+                continue
+
+            # Movement: one Manhattan step toward the next waypoint every
+            # move_every turns. Bone and alive NanoWalls (either player's)
+            # block the step; a NanoBlocker on the target cell doubles the
+            # wait instead — walls stop the immune response, blockers slow
+            # it, exactly like they treat enemy bots.
+            hz["cooldown"] -= 1
+            if hz["cooldown"] <= 0 and len(hz["path"]) > 1:
+                target = hz["path"][hz["path_index"]]
+                if hz["position"] == target:
+                    hz["path_index"] = (hz["path_index"] + 1) % len(hz["path"])
+                    target = hz["path"][hz["path_index"]]
+                step = self._step_toward(hz["position"], target)
+                blocked = (not self._map.is_passable(step[0], step[1])
+                           or any(b.type == "NanoWall" and b.is_alive and b.position == step
+                                  for b in self._bots))
+                slowed = any(b.type == "NanoBlocker" and b.is_alive and b.position == step
+                             for b in self._bots)
+                if not blocked and not slowed:
+                    hz["position"] = step
+                    hz["cooldown"] = hz["move_every"]
+                elif slowed and not blocked:
+                    hz["position"] = step
+                    hz["cooldown"] = hz["move_every"] * 2
+                else:
+                    hz["cooldown"] = hz["move_every"]  # wait and retry
+
+            # Attack: the nearest alive bot of either player within range.
+            best, best_d2 = None, float("inf")
+            r2 = hz["range"] * hz["range"]
+            for b in self._bots:
+                if not b.is_alive:
+                    continue
+                d2 = (b.position[0] - hz["position"][0]) ** 2 + (b.position[1] - hz["position"][1]) ** 2
+                if d2 <= r2 and d2 < best_d2:
+                    best_d2, best = d2, b
+            if best is not None:
+                dmg = self._rng.randint(1, hz["damage"])
+                best.take_damage(dmg)
+                events.append({"type": "hazard_attack", "hazard": hz["id"],
+                                "target": best.id, "damage": dmg,
+                                "at": [best.position[0], best.position[1]]})
+                if not best.is_alive:
+                    events.append({"type": "bot_destroyed", "bot_id": best.id,
+                                    "owner": best.owner_id, "by": "hazard",
+                                    "at": [best.position[0], best.position[1]]})
+
+    @staticmethod
+    def _step_toward(pos: tuple[int, int], target: tuple[int, int]) -> tuple[int, int]:
+        dx, dy = target[0] - pos[0], target[1] - pos[1]
+        if abs(dx) >= abs(dy) and dx != 0:
+            return (pos[0] + (1 if dx > 0 else -1), pos[1])
+        if dy != 0:
+            return (pos[0], pos[1] + (1 if dy > 0 else -1))
+        return pos
 
     # --- action handlers ---
 
@@ -512,6 +618,15 @@ class SimulationCore:
         if dist != 1 or not self._map.is_passable(action.target_position[0], action.target_position[1]):
             events.append({"type": "build_failed", "bot_id": bot.id, "reason": "invalid_position"})
             return
+        if action.build_type == "NanoNeedle" and any(
+                b.type == "NanoNeedle" and b.is_alive and b.position == action.target_position
+                for b in self._bots):
+            # GAME-04: first claim holds. Without this, two needles could
+            # stack on one Habitas Point and the later-built one silently
+            # took 100% of the score every turn (confirmed in v0.0.8's
+            # contested-point trace). The point reopens if the needle dies.
+            events.append({"type": "build_failed", "bot_id": bot.id, "reason": "habitas_occupied"})
+            return
         new_stats = BotTypeRegistry.get_type(action.build_type)
         cost = int(new_stats.get("build_cost", 0))
         bank = self._player_azn_bank.get(bot.owner_id, 0)
@@ -543,11 +658,65 @@ class SimulationCore:
         events.append({"type": "injection_point_created", "player": bot.owner_id,
                         "pos": [pos[0], pos[1]]})
 
+
+    # --- fog of war & line of sight ---
+
+    def _visible_to(self, player_id: int, pos: tuple[int, int]) -> bool:
+        """True if pos is within scan radius (Euclidean, min SCAN_FLOOR)
+        of any of this player's alive bots — GAME-01."""
+        for b in self._bots:
+            if b.owner_id != player_id or not b.is_alive:
+                continue
+            r = max(b.scan, SCAN_FLOOR)
+            if (b.position[0] - pos[0]) ** 2 + (b.position[1] - pos[1]) ** 2 <= r * r:
+                return True
+        return False
+
+    def _line_blocked(self, a: tuple[int, int], b: tuple[int, int]) -> bool:
+        """GAME-03: an attack is blocked if any cell strictly between
+        attacker and target is Bone or holds an alive NanoWall (either
+        player's — a wall is a physical barrier, it has no idea whose
+        shot is passing through). Bresenham over the segment."""
+        wall_cells = {bot.position for bot in self._bots
+                      if bot.type == "NanoWall" and bot.is_alive}
+        x0, y0 = a
+        x1, y1 = b
+        dx, dy = abs(x1 - x0), abs(y1 - y0)
+        sx = 1 if x1 > x0 else -1
+        sy = 1 if y1 > y0 else -1
+        err = dx - dy
+        x, y = x0, y0
+        while True:
+            if (x, y) != a and (x, y) != b:
+                if not self._map.is_passable(x, y) or (x, y) in wall_cells:
+                    return True
+            if (x, y) == (x1, y1):
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
+        return False
+
     # --- helpers ---
 
     def _build_map_info(self, player_id: int, turn: int) -> MapInfo:
+        visible_enemies = [
+            {"id": b.id, "type": b.type, "position": b.position, "hp": b.hp}
+            for b in self._bots
+            if b.owner_id != player_id and b.is_alive and self._visible_to(player_id, b.position)
+        ]
+        visible_hazards = [
+            {"id": h["id"], "position": h["position"], "hp": h["hp"]}
+            for h in self._hazards
+            if h["alive"] and self._visible_to(player_id, h["position"])
+        ]
         return MapInfo.build(self._map, turn, self._habitas_state, self._azn_nodes,
-                              self._bots, player_id, self._player_azn_bank.get(player_id, 0))
+                              visible_enemies, visible_hazards,
+                              self._player_azn_bank.get(player_id, 0))
 
     def _build_proxies(self, player_id: int) -> list[BotProxy]:
         return [BotProxy(bot) for bot in self._bots if bot.owner_id == player_id and bot.is_alive]

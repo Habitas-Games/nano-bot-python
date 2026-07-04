@@ -50,6 +50,11 @@ class MapData:
         self.habitas_points: list[tuple[int, int]] = []
         self.azn_nodes: list[dict] = []  # {"position": (x, y), "quantity": int}
         self.injection_zones: list[dict] = []  # {"player": int, "rect": (x, y, w, h)}
+        # Immune-system hazards ("white cells") — GAME-02. Each:
+        # {"path": [(x, y), ...], "hp": int, "damage": int (max per hit),
+        #  "range": float (Euclidean contact range), "move_every": int}.
+        # A single-point path means a stationary hazard. The path loops.
+        self.hazards: list[dict] = []
         self._cells: list[dict] = [
             {"density": Density.LOW, "stream_dir": StreamDir.NONE}
             for _ in range(width * height)
