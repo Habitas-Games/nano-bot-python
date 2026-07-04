@@ -30,10 +30,11 @@ pip install -r requirements.txt
 python main.py                  # launch the app (main menu)
 ```
 
-From the main menu: **Run Match** simulates the first two strategies in
-`strategies/` on the first map in `maps/` and opens the replay viewer.
-**Map Editor** opens the visual map editor. **Tournament** runs a
-round-robin over every strategy/map combination.
+From the main menu: **Run Match** simulates a first match with default
+picks and opens the match window — change the map and both strategies
+with the pickers at the top of that window and press **Restart** to
+re-simulate in place. **Map Editor** opens the visual map editor.
+**Tournament** runs a round-robin over every strategy/map combination.
 
 ## Writing a strategy
 
@@ -113,7 +114,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-296 unit tests cover the core simulation engine and map-editor logic
+301 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real

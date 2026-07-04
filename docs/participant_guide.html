@@ -283,19 +283,20 @@
 <div class="step-row">
   <span class="step">2</span>
   <p>
-    <strong>Run the app</strong> (<code>./run.sh</code>) and open <em>Main Menu → Run Match</em>.
-    Use the <strong>Player 1 Strategy</strong> / <strong>Player 2 Strategy</strong> picker
-    buttons above "Run Match" to select <code>my_strategy</code> for one side and pit it
-    against <code>example_strategy_v2</code> or any other file in <code>strategies/</code>.
+    <strong>Run the app</strong> (<code>./run.sh</code>) and hit <em>Run Match</em> in the
+    main menu. The match window opens with a first match already simulated. Use the
+    <strong>Map</strong> / <strong>P1</strong> / <strong>P2</strong> picker buttons at the
+    top of that window to select <code>my_strategy</code> for one side, then press
+    <strong>Restart</strong> to re-simulate right there — no need to go back to the menu.
   </p>
 </div>
 <div class="step-row">
   <span class="step">3</span>
   <p>
-    <strong>Iterate.</strong> The replay viewer lets you scrub through all 1 500 turns with
-    the turn slider, inspect individual bots, and zoom into any area. Pan with
-    <em>middle-drag</em>, zoom with <em>scroll-wheel</em>, inspect a bot with
-    <em>left-click</em> on it.
+    <strong>Iterate.</strong> Scrub through all 1 500 turns with the turn slider,
+    inspect individual bots, and zoom into any area. Pan with <em>left-drag</em>
+    (or middle-drag), zoom with the <em>scroll-wheel</em>, and <em>click</em> a bot
+    (without dragging) to inspect it.
   </p>
 </div>
 
@@ -563,7 +564,7 @@
   <div class="callout-title">Tied final scores</div>
   If both players have the same score at turn 1 500, the winner is decided first by
   bots still alive, then by AZN currently banked. If everything is still tied after
-  that, player 0 wins by convention — in practice this only happens in a fully
+  that, Player 1 wins by convention — in practice this only happens in a fully
   symmetric match.
 </div>
 
@@ -628,7 +629,7 @@
     </tr>
     <tr>
       <td><code>transfer_to(target_position: tuple[int, int])</code></td>
-      <td>Transfer AZN to: a friendly NanoNeedle at <em>target_position</em> (bot must be on the cell), or back to your AZN bank if bot is inside your injection zone.</td>
+      <td>Transfer AZN to any friendly bot with storage capacity at <em>target_position</em> — a NanoNeedle or a NanoContainer (bot must be on the cell) — or back to your AZN bank if the bot is inside one of your injection zones. Relay chains (collector → container → needle) use this same call at each hop.</td>
     </tr>
     <tr>
       <td><code>build(bot_type: str, at_position: tuple[int, int])</code></td>
@@ -698,9 +699,10 @@
 <h1 id="example">8 — Walkthrough: example_strategy_v2</h1>
 
 <p>
-  <code>strategies/example_strategy.py</code> is the minimal starter — it just walks every
-  bot toward the first Habitas Point and never builds anything, so it always scores 0.
-  <code>strategies/example_strategy_v2.py</code> demonstrates the basic economic loop in
+  <code>strategies/example_strategy.py</code> is the minimal starter — it walks the NanoAI
+  to the nearest Habitas Point and plants an empty NanoNeedle there: a guaranteed
+  5 pts/turn baseline with no economy at all.
+  <code>strategies/example_strategy_v2.py</code> adds the full economic loop in
   about 130 lines. Here is what it does turn by turn:
 </p>
 
@@ -736,6 +738,27 @@
   It only ever claims <em>one</em> Habitas Point. A competitive strategy should claim
   multiple points and potentially contest enemy points.
 </div>
+
+<h2>Beyond the walkthrough: one demo per mechanic</h2>
+<p>
+  <code>strategies/</code> ships six more complete, runnable strategies — each one a
+  focused demo of a mechanic the walkthrough doesn't touch. Read them in this order
+  and you'll have seen every bot type and action in real use:
+</p>
+<ul>
+  <li><code>example_explorer.py</code> — NanoExplorer's density immunity: it races across
+      the map at flat minimum cost while everything else wades through tissue.</li>
+  <li><code>example_container.py</code> — a two-stage AZN relay: collector → container →
+      needle, cutting the collector's round trip in half.</li>
+  <li><code>example_defense.py</code> — NanoBlocker + NanoWall on a chokepoint, with the
+      wall rebuilt after its 50-turn auto-destruct.</li>
+  <li><code>example_combat.py</code> — a dedicated fighting collector hunting enemies
+      with <code>defend()</code>.</li>
+  <li><code>example_ip_creator.py</code> — <code>open_ip()</code> opens a forward
+      injection point so a far-side collector can bank locally.</li>
+  <li><code>example_full_roster.py</code> — all of the above combined: two claimed
+      points, defense, scouting, a forward base, a relay, and a fighter.</li>
+</ul>
 
 <!-- ── 9. TIPS ─────────────────────────────────────────────────────────────── -->
 <h1 id="tips">9 — Strategy tips</h1>
@@ -778,11 +801,11 @@
 
 <div class="callout info">
   <div class="callout-title">Debugging tip</div>
-  Every match — whether run from the main menu, <code>run_headless.py</code>, or a
-  tournament — saves a replay JSON. Open it from the main menu's <em>Load Replay</em>
-  picker (or pass its path directly) to scrub through every turn with the jump-to-turn
-  slider and inspect bot positions, actions, and events. Click any bot on the map to
-  read its current stats in the side panel.
+  Every match — whether run from the match window, <code>run_headless.py</code>, or a
+  tournament — saves a replay JSON under <code>replays/</code>. The fastest debug loop
+  is the match window itself: pick your strategy, Restart, scrub with the jump-to-turn
+  slider, and click any bot to read its live stats in the inspector. Headless runs are
+  ideal for batch testing (<code>--seed</code> makes them exactly reproducible).
 </div>
 
 <!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
