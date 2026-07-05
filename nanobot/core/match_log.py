@@ -16,6 +16,10 @@ class MatchLog:
         self.final_scores: dict = {}
         self.winner_id = -1
         self.total_turns = 0
+        # RNG seed the match ran with, or None for replays saved before
+        # this field existed — None keeps the viewer's seed display honest
+        # ("—") instead of implying an old replay is reproducible with 0.
+        self.seed: int | None = None
 
     def record_frame(self, turn: int, scores: dict, bots: list[NanoBotData],
                       azn_nodes: list[dict], habitas_points: list[dict], events: list[dict],
@@ -54,7 +58,7 @@ class MatchLog:
         return True
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "map_name": self.map_name,
             "player_strategies": self.player_strategies,
             "total_turns": self.total_turns,
@@ -62,6 +66,9 @@ class MatchLog:
             "winner_id": self.winner_id,
             "frames": self.frames,
         }
+        if self.seed is not None:
+            data["seed"] = self.seed
+        return data
 
     @staticmethod
     def load_from_file(path: str) -> "MatchLog | None":
@@ -90,6 +97,7 @@ class MatchLog:
         log.total_turns = int(data.get("total_turns", 0))
         log.final_scores = data.get("final_scores", {})
         log.winner_id = int(data.get("winner_id", -1))
+        log.seed = int(data["seed"]) if "seed" in data else None
         log.frames = data.get("frames", [])
         return log
 

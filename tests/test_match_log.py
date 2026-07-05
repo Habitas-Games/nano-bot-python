@@ -49,6 +49,23 @@ class TestSaveAndRoundTrip:
         assert reloaded.winner_id == 1
         assert len(reloaded.frames) == 1
 
+    def test_seed_round_trips(self, tmp_path):
+        log = MatchLog()
+        log.seed = 4242
+        path = str(tmp_path / "replay.json")
+        log.save_to_file(path)
+        assert MatchLog.load_from_file(path).seed == 4242
+
+    def test_missing_seed_loads_as_none_not_zero(self, tmp_path):
+        # Replays saved before the seed field existed must not pretend
+        # they're reproducible with some default seed — the viewer shows
+        # "Seed —" for None and only offers exact reruns when it's real.
+        log = MatchLog()
+        assert log.seed is None
+        path = str(tmp_path / "replay.json")
+        log.save_to_file(path)
+        assert MatchLog.load_from_file(path).seed is None
+
     def test_save_creates_parent_directory(self, tmp_path):
         log = MatchLog()
         nested = tmp_path / "a" / "b" / "replay.json"

@@ -116,7 +116,7 @@ implemented and verified by example strategies that exercise them.
 | VIS-01 | The match window renders a replay as an animated 2D top-down scene using the real tile/marker/bot art (same assets as the map editor). | ✅ |
 | VIS-02 | Terrain uses tissue textures; bloodstream cells show the stream texture plus a directional arrow overlay. | ✅ |
 | VIS-03 | Bots show their type sprite inside a team-colored ring; the default zoom keeps sprites recognizable. | ✅ |
-| VIS-04 | Controls: play/pause, step ±1, speed 0.25×–4×, and a **jump-to-turn slider**. Zoom via wheel; pan via left-drag (click-without-drag selects a bot) or middle-drag. | ✅ |
+| VIS-04 | Controls: play/pause (Space), step ±1 (←/→, hold to repeat), Home/End, speed 0.25×–16×, and a **jump-to-turn slider**. Wheel zoom is anchored at the cursor; pan via left-drag (click-without-drag selects a bot) or middle-drag, clamped so the map can't be lost; F (or loading any replay) fits the whole map in view. A hint line in the top bar lists the shortcuts. | ✅ |
 | VIS-05 | HUD: map name, turn counter, per-player score + bots alive (labels are 1-indexed: "Player 1"/"Player 2"), winner line, map legend, and an always-visible bot inspector. | ✅ |
 | VIS-06 | Habitas Points render neutral (gold) or tinted with the owning team's color; stored AZN is labeled. | ✅ |
 | VIS-07 | **Match setup lives in the match window**: Map / Player 1 / Player 2 pickers plus a Restart button re-simulate in place on a background thread. The main menu is a plain launcher. | ✅ |
@@ -129,7 +129,7 @@ implemented and verified by example strategies that exercise them.
 | TRN-01 | Round-robin: every strategy vs every other, on every shipped map. | ✅ |
 | TRN-02/03 | Results accumulate into a leaderboard (W/L/D, points), shown in-app and exported to `tournament_results.json`; every match's replay is saved. | ✅ |
 | TRN-04 | DQ'd strategies (load error, timeout) appear on the leaderboard as DQ, never silently skipped. One failed match cannot kill the run. | ✅ |
-| TRN-05 | A dedicated summary view highlights the top finishers. | 🟡 (full ranked list shown; no distinct top-3 view) |
+| TRN-05 | A dedicated summary view highlights the top finishers. | ✅ (ranks 1–3 get podium colors; standings render live while the tournament runs, and it can be re-run without restarting the app) |
 
 ## 5. Non-Functional Requirements
 
@@ -180,7 +180,7 @@ What holds the fun back, in priority order:
 | UX-01 | **Replay browser**: the match window's "Replays..." button opens any saved replay (tournament and headless runs included), newest first. | ✅ |
 | UX-02 | **Zone owner selector** in the map editor sidebar (P1/P2 toggle); the status bar names the owner new zones will get. | ✅ |
 | UX-03 | **Event VFX + menu art**: effect animations wired per VIS-08; the main menu uses the background art (title baked in) with buttons in the lower third. | ✅ |
-| UX-04 | **Seed control**: Restart rolls a fresh random seed by default; the seed in use is displayed, and a lock toggle reruns the exact same match. The main menu's first match is random-seeded too. | ✅ |
+| UX-04 | **Seed control**: Restart rolls a fresh random seed by default; the seed in use is displayed, and a lock toggle reruns the exact same match. The main menu's first match is random-seeded too. Replays store their seed, so any opened replay (tournament/headless included) can be rerun exactly. | ✅ |
 
 ## 8. Milestones
 
@@ -188,4 +188,4 @@ What holds the fun back, in priority order:
 |---|---|
 | M1 Core engine · M2 Strategy API · M3 Playback · M4 Tournament · M5 Map editor | ✅ Done (see `docs/versioning/`) |
 | M6 **Make it a game** — GAME-01..05 (fog of war, hazards, combat counterplay, habitas exclusivity, third map) | ✅ Done (v0.0.14) |
-| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); remaining: TRN-05 top-3 summary view, SCO-03 decision, editor hazard tool (MAP-08) | 🟡 |
+| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); TRN-05 done (v0.0.15); remaining: SCO-03 decision, editor hazard tool (MAP-08) | 🟡 |

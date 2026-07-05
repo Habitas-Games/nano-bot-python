@@ -36,6 +36,14 @@ class MapHistory:
     def can_undo(self) -> bool:
         return self._index > 0
 
+    @property
+    def position(self) -> int:
+        """Current index in the undo stack — the editor compares this
+        against the position it recorded at the last save/load to know
+        whether the document has unsaved changes (undoing back to the
+        saved position correctly counts as clean again)."""
+        return self._index
+
     def undo(self, m: MapData) -> None:
         """Restore the state as of right before the most recently completed
         edit, then step the pointer back for the next undo call.

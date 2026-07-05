@@ -95,6 +95,7 @@ class SimulationCore:
         self._map = map_data
         self._strategy_paths = strategy_paths
         self._pathfinder = GridPathfinder(map_data)
+        self._seed = seed
         self._rng = random.Random(seed)
         self._player_count = max(len(strategy_paths), 2)
 
@@ -127,6 +128,10 @@ class SimulationCore:
         log = MatchLog()
         log.map_name = self._map.map_name
         log.player_strategies = list(self._strategy_paths)
+        # Recorded so any saved replay can be rerun exactly: the playback
+        # viewer's seed display/lock reads this instead of only knowing
+        # seeds for matches it launched itself.
+        log.seed = self._seed
 
         self._init_match_state()
 

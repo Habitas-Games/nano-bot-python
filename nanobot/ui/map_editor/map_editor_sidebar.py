@@ -9,7 +9,7 @@ import pygame
 
 from nanobot.core.map_data import Density, StreamDir
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, ButtonGroup, draw_text
+from nanobot.ui.widgets import Button, ButtonGroup, draw_hover_tooltips, draw_text
 
 PANEL_WIDTH = 250
 PADDING = 10
@@ -153,9 +153,11 @@ class MapEditorSidebar:
             self.tool_group.add(btn)
             self._tool_buttons_by_name[tool_name] = btn
         y += size + 10
-        for label, attr in [("Load", "on_load"), ("Save", "on_save"), ("Clear Map", "on_clear")]:
+        for label, attr, tip in [("Load", "on_load", "Open a map from maps/ (warns about unsaved changes)"),
+                                  ("Save", "on_save", "Save to maps/ (Ctrl+S)"),
+                                  ("Clear Map", "on_clear", "Wipe the whole map (undoable)")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
-                         on_click=lambda a=attr: self._fire(a))
+                         on_click=lambda a=attr: self._fire(a), tooltip=tip)
             self._action_buttons.append(btn)
             y += ROW_HEIGHT + 4
         y += 6
@@ -164,7 +166,7 @@ class MapEditorSidebar:
         self._headers.append(("History", y))
         y += 18
         self.undo_btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), "Undo",
-                                on_click=lambda: self._fire("on_undo"))
+                                on_click=lambda: self._fire("on_undo"), tooltip="Ctrl+Z")
         self.undo_btn.enabled = False
         self._action_buttons.append(self.undo_btn)
 
@@ -236,18 +238,10 @@ class MapEditorSidebar:
         for btn in self._action_buttons:
             btn.draw(surface)
 
-        # Tooltips drawn last so they overlay everything else.
-        for group in (self.terrain_group, self.stream_group, self.tool_group, self.zone_player_group):
-            for btn in group.buttons:
-                if btn.hovered and btn.tooltip:
-                    self._draw_tooltip(surface, btn)
-
-    def _draw_tooltip(self, surface: "pygame.Surface", btn: Button) -> None:
-        font = pygame.font.SysFont("sans", 12)
-        label = font.render(btn.tooltip, True, (20, 20, 20))
-        pad = 5
-        box = pygame.Rect(btn.rect.left, btn.rect.bottom + 4, label.get_width() + pad * 2, label.get_height() + pad * 2)
-        box.left = min(box.left, surface.get_width() - box.width - 4)
-        pygame.draw.rect(surface, (235, 230, 200), box, border_radius=3)
-        pygame.draw.rect(surface, (40, 40, 30), box, width=1, border_radius=3)
-        surface.blit(label, (box.x + pad, box.y + pad))
+        # Tooltips drawn last so they overlay everything else — via the
+        # shared widgets helper (this sidebar used to be the only place in
+        # the app that rendered tooltips at all).
+        tooltip_buttons = [btn for group in (self.terrain_group, self.stream_group,
+                                              self.tool_group, self.zone_player_group)
+                           for btn in group.buttons]
+        draw_hover_tooltips(surface, tooltip_buttons + self._action_buttons)

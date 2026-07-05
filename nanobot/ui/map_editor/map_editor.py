@@ -27,7 +27,7 @@ from nanobot.ui.map_editor.tools.pan_tool import PanTool
 from nanobot.ui.map_editor.tools.stream_tool import StreamTool
 from nanobot.ui.map_editor.tools.terrain_tool import TerrainTool
 from nanobot.ui.map_editor.tools.zone_tool import ZoneTool
-from nanobot.ui.widgets import Button, draw_text
+from nanobot.ui.widgets import Button, draw_text, get_font
 
 MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 0.5, 3.0, 0.1
 STATUS_BAR_HEIGHT = 44
@@ -93,6 +93,12 @@ class MapEditorScreen:
         self.status_text = ""
         self.modal: dict | None = None
         self.on_back_to_menu = None  # callback(), set by main.py — see App._open_editor
+        # Filename of the map currently being edited (basename, may be
+        # None for a brand-new document) and the undo-stack position at
+        # the last load/save — together they drive the save-as prefill,
+        # the unsaved-changes marker, and the confirm-before-Load guard.
+        self.current_filename: str | None = None
+        self._saved_history_pos = 0
 
         self.menu_btn = Button((screen_size[0] - 110, 6, 100, 32), "Menu",
                                 icon=icons.back_arrow_icon(16), on_click=self._fire_back_to_menu)
@@ -192,28 +198,48 @@ class MapEditorScreen:
         self.history.reset()
         self.history.save_state(self.doc)
         self.sidebar.set_undo_enabled(self.history.can_undo())
+        self.current_filename = os.path.basename(path)
+        self._saved_history_pos = self.history.position
         self.status_text = f"Loaded: {os.path.basename(path)}"
         return True
 
+    def _is_dirty(self) -> bool:
+        return self.history.position != self._saved_history_pos
+
     def _open_load_picker(self) -> None:
+        # Loading replaces the document outright — with unsaved edits in
+        # flight, ask first instead of silently discarding them.
+        if self._is_dirty():
+            self.modal = {"type": "confirm_discard"}
+            return
+        self._open_load_picker_now()
+
+    def _open_load_picker_now(self) -> None:
         files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
         if not files:
             self._show_message("No maps found in maps/")
             return
         self.modal = {"type": "load_picker", "files": files}
 
+    def _save_buffer_default(self) -> str:
+        # Prefill with the file being edited — re-saving vascular_network
+        # used to suggest "my_map.json" and make you retype the real name.
+        return self.current_filename or "my_map.json"
+
     def _start_save_flow(self) -> None:
         errors = map_loader.validate(self.doc)
         if errors:
             self.modal = {"type": "confirm_save_anyway", "errors": errors}
         else:
-            self.modal = {"type": "save_filename", "buffer": "my_map.json"}
+            self.modal = {"type": "save_filename", "buffer": self._save_buffer_default()}
 
     def _do_save(self, filename: str) -> None:
         if not filename.endswith(".json"):
             filename += ".json"
         path = os.path.join(MAPS_DIR, filename)
         if map_loader.save_to_file(self.doc, path):
+            self.current_filename = filename
+            self._saved_history_pos = self.history.position
             self.status_text = f"Saved: {filename}"
         else:
             self._show_message(f"Failed to save: {filename}")
@@ -231,6 +257,12 @@ class MapEditorScreen:
         self.modal = {"type": "message", "text": text}
 
     # --- coordinate helpers ---
+
+    def _clamp_scroll(self) -> None:
+        max_x = max(0, int(self.doc.width * CELL_SIZE * self.zoom - self.canvas_rect.width))
+        max_y = max(0, int(self.doc.height * CELL_SIZE * self.zoom - self.canvas_rect.height))
+        self.scroll_x = max(0, min(self.scroll_x, max_x))
+        self.scroll_y = max(0, min(self.scroll_y, max_y))
 
     def _to_grid_pos(self, screen_pos: tuple[int, int]) -> tuple[int, int]:
         size = CELL_SIZE * self.zoom
@@ -255,13 +287,41 @@ class MapEditorScreen:
             return
 
         if event.type == pygame.KEYDOWN:
+            if event.mod & pygame.KMOD_CTRL:
+                if event.key == pygame.K_z:
+                    self._undo()
+                    return
+                if event.key == pygame.K_s:
+                    self._start_save_flow()
+                    return
             if self.current_tool.handle_key(event):
                 self._update_status()
                 return
 
         if event.type == pygame.MOUSEWHEEL:
-            if self._is_in_canvas(pygame.mouse.get_pos()):
-                self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, self.zoom + event.y * ZOOM_STEP))
+            mx, my = pygame.mouse.get_pos()
+            if self._is_in_canvas((mx, my)):
+                # Anchored at the cursor (same fix as the playback viewer):
+                # the cell under the mouse stays put while zooming, instead
+                # of the view sliding toward the map's top-left corner.
+                old = self.zoom
+                self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, old + event.y * ZOOM_STEP))
+                if self.zoom != old:
+                    wx = (mx - self.canvas_rect.x + self.scroll_x) / old
+                    wy = (my - self.canvas_rect.y + self.scroll_y) / old
+                    self.scroll_x = int(wx * self.zoom - (mx - self.canvas_rect.x))
+                    self.scroll_y = int(wy * self.zoom - (my - self.canvas_rect.y))
+                    self._clamp_scroll()
+            return
+
+        # Middle-drag pans from any tool — switching to the Pan tool just
+        # to reposition and back again was the single most repetitive
+        # round-trip in editing sessions. getattr because synthetic events
+        # (tests/check_editor.py) may omit the buttons tuple.
+        if event.type == pygame.MOUSEMOTION and getattr(event, "buttons", (0, 0, 0))[1]:
+            self.scroll_x -= event.rel[0]
+            self.scroll_y -= event.rel[1]
+            self._clamp_scroll()
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and self._is_in_canvas(event.pos):
@@ -309,12 +369,25 @@ class MapEditorScreen:
         elif m["type"] == "confirm_save_anyway":
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    self.modal = {"type": "save_filename", "buffer": "my_map.json"}
+                    self.modal = {"type": "save_filename", "buffer": self._save_buffer_default()}
                 elif event.key == pygame.K_ESCAPE:
                     self.modal = None
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if getattr(self, "_modal_yes_rect", None) and self._modal_yes_rect.collidepoint(event.pos):
-                    self.modal = {"type": "save_filename", "buffer": "my_map.json"}
+                    self.modal = {"type": "save_filename", "buffer": self._save_buffer_default()}
+                elif getattr(self, "_modal_no_rect", None) and self._modal_no_rect.collidepoint(event.pos):
+                    self.modal = None
+        elif m["type"] == "confirm_discard":
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    self.modal = None
+                    self._open_load_picker_now()
+                elif event.key == pygame.K_ESCAPE:
+                    self.modal = None
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if getattr(self, "_modal_yes_rect", None) and self._modal_yes_rect.collidepoint(event.pos):
+                    self.modal = None
+                    self._open_load_picker_now()
                 elif getattr(self, "_modal_no_rect", None) and self._modal_no_rect.collidepoint(event.pos):
                     self.modal = None
         elif m["type"] == "save_filename":
@@ -351,6 +424,12 @@ class MapEditorScreen:
                                 selection, self.azn_hover_index, self.preview_rect)
 
         self._draw_top_bar(surface)
+        # Synced every frame rather than at call sites: every tool pushes
+        # undo states (history.save_state) but none of them notified the
+        # sidebar, so the Undo button stayed greyed out after the first
+        # paint until some unrelated action (Load/Clear) refreshed it —
+        # found via the v0.0.15 QA screenshots.
+        self.sidebar.set_undo_enabled(self.history.can_undo())
         self.sidebar.draw(surface)
 
         # Drawn last, after the sidebar, so it's never painted over —
@@ -390,6 +469,15 @@ class MapEditorScreen:
 
         draw_text(surface, self.status_text, (icon_box.right + 10, 16), size=12)
 
+        # Right side of the top bar: which file is being edited, with an
+        # unsaved-changes dot — before this there was no on-screen record
+        # of what you had loaded or whether your work was saved.
+        name = self.current_filename or "(new map)"
+        if self._is_dirty():
+            name += "  * unsaved"
+        label = get_font(12).render(name, True, (220, 190, 120) if self._is_dirty() else (150, 155, 168))
+        surface.blit(label, (self.canvas_rect.width - label.get_width() - 12, 16))
+
     def _draw_modal(self, surface: "pygame.Surface") -> None:
         overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
@@ -412,6 +500,18 @@ class MapEditorScreen:
         if m["type"] == "message":
             draw_text(surface, m["text"], (box_x + 16, box_y + 20), size=14)
             draw_text(surface, "(click or press Enter to dismiss)", (box_x + 16, box_y + box_h - 30), size=11, color=(150, 150, 150))
+
+        elif m["type"] == "confirm_discard":
+            name = self.current_filename or "this map"
+            draw_text(surface, f"Discard unsaved changes to {name}?", (box_x + 16, box_y + 20), size=14)
+            draw_text(surface, "Loading another map replaces your edits.", (box_x + 16, box_y + 46),
+                      size=12, color=(220, 180, 100))
+            yes_rect = pygame.Rect(box_x + 16, box_y + box_h - 40, 100, 28)
+            no_rect = pygame.Rect(box_x + box_w - 116, box_y + box_h - 40, 100, 28)
+            self._modal_yes_rect = yes_rect
+            self._modal_no_rect = no_rect
+            Button(yes_rect, "Discard").draw(surface)
+            Button(no_rect, "Cancel").draw(surface)
 
         elif m["type"] == "confirm_save_anyway":
             draw_text(surface, "Map incomplete:", (box_x + 16, box_y + 16), size=14)

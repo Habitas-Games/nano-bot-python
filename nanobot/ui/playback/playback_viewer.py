@@ -25,7 +25,7 @@ from nanobot.core.map_loader import load_from_file
 from nanobot.core.match_log import MatchLog
 from nanobot.core.simulation_core import SimulationCore
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, FilePickerModal, Slider, draw_text, get_font
+from nanobot.ui.widgets import Button, FilePickerModal, Slider, draw_hover_tooltips, draw_text, get_font
 
 CELL_SIZE = 14
 SIDEBAR_WIDTH = 260
@@ -55,7 +55,11 @@ DENSITY_COLOR = {
 # consistency between editing and watching the same tissue.
 GRID_COLOR = (25, 12, 12, 70)
 PLAYER_COLORS = [(64, 140, 255), (255, 77, 64), (60, 220, 110), (255, 215, 40)]
-SPEEDS = [0.25, 0.5, 1.0, 2.0, 4.0]
+# Up to 16x: a full 1500-turn match at the old 4x cap took ~47s to watch;
+# 16x brings "skim the whole match" down to ~12s.
+SPEEDS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
+MIN_ZOOM, MAX_ZOOM = 0.5, 6.0
+KEY_HINT = "Space play  |  Left/Right step  |  Home/End ends  |  wheel zoom  |  drag pan  |  F fit"
 # How far the owned-habitas tint is lerped from the player's base color
 # toward white — matches map_renderer.gd's OWNED_BLEND exactly (0.30: mostly
 # the player's own color, lightly whitened so the art's shading still reads).
@@ -129,11 +133,9 @@ class PlaybackViewer:
         self.speed_index = 2  # 1.0x
         self._accum = 0.0
 
-        # Slightly above 1:1 by default and a higher max than the original
-        # 3.0 — at 1.0x/14px cells, a 16px bot sprite downscales to ~10px
-        # after the team-color inset and is unrecognizable as anything but
-        # a smudge. Panning (below) makes it practical to actually use a
-        # closer zoom to see one clearly.
+        # Placeholder until _load_replay() fits the whole map into the
+        # canvas (_fit_view); wheel zoom then goes up to MAX_ZOOM, where a
+        # bot sprite is comfortably readable.
         self.zoom = 1.5
         self.scroll_x = 0
         self.scroll_y = 0
@@ -200,6 +202,47 @@ class PlaybackViewer:
         self.selected_bot_id = None
         self._accum = 0.0
         self._index_replay()
+        # Replays now record their seed (match_log.py) — show it for any
+        # loaded replay, not only matches this screen launched itself.
+        if self.log is not None and self.log.seed is not None:
+            self.match_seed = self.log.seed
+        self._fit_view()
+        # Start rolling immediately: every path into a freshly loaded replay
+        # (first match from the menu, Restart, Replays...) means "watch
+        # this" — landing paused on turn 0 made each one a two-click job.
+        self._set_playing(True)
+
+    def _set_playing(self, playing: bool) -> None:
+        self.playing = playing
+        if hasattr(self, "btn_play"):
+            self.btn_play.icon = icons.pause_icon(22) if playing else icons.play_icon(22)
+
+    def _fit_view(self) -> None:
+        """Zoom/center so the whole map is visible — the previous fixed
+        1.5x default cropped every map bigger than ~48 cells and started
+        on the top-left corner, so the far player's spawn began off-screen."""
+        if self.map is None or self.canvas_rect.width <= 0 or self.canvas_rect.height <= 0:
+            return
+        map_w = self.map.width * CELL_SIZE
+        map_h = self.map.height * CELL_SIZE
+        fit = min(self.canvas_rect.width / map_w, self.canvas_rect.height / map_h)
+        self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, fit))
+        self._clamp_scroll()
+
+    def _clamp_scroll(self) -> None:
+        """Keep the map on screen: pan freedom only in the axis where the
+        map overflows the canvas, centered in the axis where it doesn't —
+        before this, panning could push the map fully off-screen with no
+        landmark to find the way back."""
+        size = CELL_SIZE * self.zoom
+        map_w = int(self.map.width * size) if self.map else 0
+        map_h = int(self.map.height * size) if self.map else 0
+        for attr, map_px, canvas_px in (("scroll_x", map_w, self.canvas_rect.width),
+                                        ("scroll_y", map_h, self.canvas_rect.height)):
+            if map_px <= canvas_px:
+                setattr(self, attr, -(canvas_px - map_px) // 2)
+            else:
+                setattr(self, attr, max(0, min(getattr(self, attr), map_px - canvas_px)))
 
     def _index_replay(self) -> None:
         """Precompute id -> (owner, type) and the notable-event timeline
@@ -254,11 +297,7 @@ class PlaybackViewer:
         self.screen_size = screen_size
         self._recompute_canvas_rect()
         self._build_controls()
-        # _build_controls() rebuilds btn_play from scratch with its default
-        # "play" icon — restore the icon that actually matches self.playing
-        # so resizing mid-playback doesn't silently flip the button back to
-        # showing "play" while playback keeps running.
-        self.btn_play.icon = icons.pause_icon(22) if self.playing else icons.play_icon(22)
+        self._clamp_scroll()
 
     def _recompute_canvas_rect(self) -> None:
         w = self.screen_size[0] - SIDEBAR_WIDTH
@@ -268,7 +307,10 @@ class PlaybackViewer:
     def _build_controls(self) -> None:
         y = 9
         size = 32
-        self.btn_play = Button((10, y, size, size), "", icon=icons.play_icon(22), on_click=self._toggle_play)
+        # Icon reflects the current playing state — _build_controls also
+        # runs on resize and after auto-playing loads, not just at startup.
+        play_icon = icons.pause_icon(22) if self.playing else icons.play_icon(22)
+        self.btn_play = Button((10, y, size, size), "", icon=play_icon, on_click=self._toggle_play)
         x = 10 + size + 6
         self.btn_step_back = Button((x, y, size, size), "", icon=icons.step_back_icon(22), on_click=lambda: self._step(-1))
         x += size + 4
@@ -358,14 +400,26 @@ class PlaybackViewer:
         if not files:
             self.match_message = "No replays found in replays/"
             return
-        self.picker.open("Open replay", files[:14], self._load_picked_replay)
+        files = files[:14]
+        labels = [f"{os.path.basename(f)}   ({self._age_label(os.path.getmtime(f))})" for f in files]
+        self.picker.open("Open replay (newest first)", files, self._load_picked_replay, labels=labels)
+
+    @staticmethod
+    def _age_label(mtime: float) -> str:
+        age = max(0, time.time() - mtime)
+        if age < 90:
+            return "just now"
+        if age < 3600:
+            return f"{int(age // 60)} min ago"
+        if age < 86400:
+            return f"{int(age // 3600)} h ago"
+        return f"{int(age // 86400)} d ago"
 
     def _load_picked_replay(self, path: str) -> None:
-        self.playing = False
-        self.btn_play.icon = icons.play_icon(22)
         self._load_replay(path)
         self._init_selection_from_log()
         self._refresh_selector_labels()
+        self._refresh_seed_label()
         max_frame = len(self.log.frames) - 1 if self.log and self.log.frames else 0
         self.turn_slider.set_range(0, max_frame)
         self.turn_slider.set_value(0)
@@ -459,8 +513,7 @@ class PlaybackViewer:
             self.on_back_to_menu()
 
     def _toggle_play(self) -> None:
-        self.playing = not self.playing
-        self.btn_play.icon = icons.pause_icon(22) if self.playing else icons.play_icon(22)
+        self._set_playing(not self.playing)
 
     def _step(self, delta: int) -> None:
         if self.log is None:
@@ -498,8 +551,7 @@ class PlaybackViewer:
             if self.current_frame < len(self.log.frames) - 1:
                 self.current_frame += 1
             else:
-                self.playing = False
-                self.btn_play.icon = icons.play_icon(22)
+                self._set_playing(False)
                 break
 
     def handle_event(self, event: "pygame.event.Event") -> None:
@@ -513,8 +565,21 @@ class PlaybackViewer:
                 return
 
         if event.type == pygame.MOUSEWHEEL:
-            if self.canvas_rect.collidepoint(pygame.mouse.get_pos()):
-                self.zoom = max(0.5, min(6.0, self.zoom + event.y * 0.1))
+            mx, my = pygame.mouse.get_pos()
+            if self.canvas_rect.collidepoint((mx, my)):
+                # Anchored at the cursor: the world point under the mouse
+                # stays under the mouse, so zooming in on a fight actually
+                # lands on the fight instead of drifting toward (0,0).
+                # Multiplicative steps feel even across the zoom range
+                # (the old flat +0.1 was glacial at 6x and coarse at 0.5x).
+                old = self.zoom
+                self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, old * (1.15 ** event.y)))
+                if self.zoom != old:
+                    wx = (mx - self.canvas_rect.x + self.scroll_x) / old
+                    wy = (my - self.canvas_rect.y + self.scroll_y) / old
+                    self.scroll_x = int(wx * self.zoom - (mx - self.canvas_rect.x))
+                    self.scroll_y = int(wy * self.zoom - (my - self.canvas_rect.y))
+                    self._clamp_scroll()
             return
 
         # Left button: click-to-select a bot, or drag-to-pan if the mouse
@@ -538,10 +603,12 @@ class PlaybackViewer:
             self._left_dragged = True
             self.scroll_x -= event.rel[0]
             self.scroll_y -= event.rel[1]
+            self._clamp_scroll()
             return
         if event.type == pygame.MOUSEMOTION and event.buttons[1]:
             self.scroll_x -= event.rel[0]
             self.scroll_y -= event.rel[1]
+            self._clamp_scroll()
             return
 
         if event.type == pygame.KEYDOWN:
@@ -551,6 +618,12 @@ class PlaybackViewer:
                 self._step(-1)
             elif event.key == pygame.K_RIGHT:
                 self._step(1)
+            elif event.key == pygame.K_HOME:
+                self._jump_to(0)
+            elif event.key == pygame.K_END and self.log and self.log.frames:
+                self._jump_to(len(self.log.frames) - 1)
+            elif event.key == pygame.K_f:
+                self._fit_view()
 
     def _handle_canvas_click(self, screen_pos: tuple[int, int]) -> None:
         if self.log is None or not self.log.frames:
@@ -588,14 +661,19 @@ class PlaybackViewer:
         label_surf = font.render(speed_label, True, (215, 218, 228))
         surface.blit(label_surf, (label_center_x - label_surf.get_width() // 2, self.btn_speed_down.rect.y + 8))
 
-        if self.running_match:
-            self._draw_running_indicator(surface)
-        elif self.match_message:
-            draw_text(surface, self.match_message, (self.btn_restart.rect.right + 14, TOP_ROW_HEIGHT + 13),
-                      size=12, color=(220, 200, 120))
+        # Keyboard-shortcut hint in row 1's dead space, only when it fits
+        # between the speed controls and Back — the shortcuts were
+        # completely undiscoverable before (nothing on screen mentioned
+        # them and Button tooltips weren't rendered on this screen either).
+        hint_font = get_font(11)
+        hint_surf = hint_font.render(KEY_HINT, True, (130, 134, 148))
+        hint_x = self.btn_speed_up.rect.right + 28
+        if hint_x + hint_surf.get_width() <= self.btn_back.rect.left - 16:
+            surface.blit(hint_surf, (hint_x, self.btn_speed_down.rect.y + 9))
 
         if self.log is None or not self.log.frames:
             draw_text(surface, "No replay loaded / empty match log", (20, CONTROL_BAR_HEIGHT + 20), size=16, color=(220, 100, 100))
+            self._draw_status_strip(surface)
             self.picker.draw(surface, self.screen_size)
             return
 
@@ -616,22 +694,35 @@ class PlaybackViewer:
         self.turn_slider.set_value(self.current_frame)
         self._draw_hud(surface, frame)
         self._draw_inspector(surface, frame)
+        self._draw_status_strip(surface)
+        draw_hover_tooltips(surface, [b for b in self.controls if isinstance(b, Button)])
 
         self.picker.draw(surface, self.screen_size)
 
-    def _draw_running_indicator(self, surface: "pygame.Surface") -> None:
-        elapsed = time.monotonic() - self._match_started_at
-        x = self.btn_restart.rect.right + 14
-        y = TOP_ROW_HEIGHT + 20
-        radius = 8
-        angle = (elapsed * 4.0) % (2 * math.pi)
-        for i in range(8):
-            a = angle + i * (2 * math.pi / 8)
-            shade = 80 + int(150 * (i / 8))
-            px = x + radius + radius * math.cos(a)
-            py = y + radius * math.sin(a)
-            pygame.draw.circle(surface, (shade, shade, shade), (int(px), int(py)), 2)
-        draw_text(surface, f"Simulating... {elapsed:.1f}s", (x + radius * 2 + 10, y - 7), size=12, color=(220, 200, 120))
+    def _draw_status_strip(self, surface: "pygame.Surface") -> None:
+        """Match status (running spinner / last result) on its own
+        full-width strip at the top of the canvas. It used to be drawn
+        at btn_restart.rect.right — right on top of the Replays.../Seed
+        buttons added next to Restart in v0.0.14 (verified by screenshot:
+        both the message and the button labels were unreadable)."""
+        if not (self.running_match or self.match_message):
+            return
+        strip = pygame.Rect(0, CONTROL_BAR_HEIGHT, max(self.canvas_rect.width, 320), 24)
+        overlay = pygame.Surface(strip.size, pygame.SRCALPHA)
+        overlay.fill((14, 14, 18, 225))
+        surface.blit(overlay, strip.topleft)
+        if self.running_match:
+            elapsed = time.monotonic() - self._match_started_at
+            cx, cy, radius = 16, strip.centery, 7
+            angle = (elapsed * 4.0) % (2 * math.pi)
+            for i in range(8):
+                a = angle + i * (2 * math.pi / 8)
+                shade = 80 + int(150 * (i / 8))
+                pygame.draw.circle(surface, (shade, shade, shade),
+                                   (int(cx + radius * math.cos(a)), int(cy + radius * math.sin(a))), 2)
+            draw_text(surface, f"Simulating... {elapsed:.1f}s", (cx + 16, strip.y + 5), size=12, color=(220, 200, 120))
+        else:
+            draw_text(surface, self.match_message, (12, strip.y + 5), size=12, color=(220, 200, 120))
 
     def _cell_rect(self, x: int, y: int) -> pygame.Rect:
         size = CELL_SIZE * self.zoom
@@ -931,8 +1022,17 @@ class PlaybackViewer:
 
         # Event ticker: the last few notable events up to the current turn
         # — the story of the match so far, wherever you've scrubbed to.
+        # Rows are limited to what fits above the bottom-anchored Bot
+        # Inspector: at small window heights the two used to overlap
+        # (verified by screenshot at 1000x620).
+        inspector_top = self.screen_size[1] - 158
+        max_rows = max(0, (inspector_top - 8 - L["ticker_rows"]) // 15)
+        if L["ticker_header"] + 14 > inspector_top:
+            return
         draw_text(surface, "Events", (x + 12, L["ticker_header"]), size=12, color=(160, 165, 180))
-        recent = [(t, txt) for t, txt in self._timeline if t <= frame["turn"]][-5:]
+        if max_rows == 0:
+            return
+        recent = [(t, txt) for t, txt in self._timeline if t <= frame["turn"]][-min(5, max_rows):]
         ty = L["ticker_rows"]
         if not recent:
             draw_text(surface, "Nothing yet.", (x + 12, ty), size=10, color=(120, 124, 138))

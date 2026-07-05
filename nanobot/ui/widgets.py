@@ -118,6 +118,28 @@ def draw_text(surface: "pygame.Surface", text: str, pos: tuple[int, int],
     surface.blit(font.render(text, True, color), pos)
 
 
+def draw_hover_tooltips(surface: "pygame.Surface", buttons: list[Button]) -> None:
+    """Draw the tooltip of whichever button is hovered, if any. Call last
+    in a screen's draw() so the tooltip overlays everything. The map editor
+    sidebar had the only tooltip rendering in the app; buttons elsewhere
+    (playback viewer) set .tooltip too, which silently never appeared."""
+    for btn in buttons:
+        if not (btn.enabled and btn.hovered and btn.tooltip):
+            continue
+        font = get_font(12)
+        label = font.render(btn.tooltip, True, (20, 20, 20))
+        pad = 5
+        box = pygame.Rect(btn.rect.left, btn.rect.bottom + 4,
+                          label.get_width() + pad * 2, label.get_height() + pad * 2)
+        box.left = max(4, min(box.left, surface.get_width() - box.width - 4))
+        if box.bottom > surface.get_height() - 4:
+            box.bottom = btn.rect.top - 4
+        pygame.draw.rect(surface, (235, 230, 200), box, border_radius=3)
+        pygame.draw.rect(surface, (40, 40, 30), box, width=1, border_radius=3)
+        surface.blit(label, (box.x + pad, box.y + pad))
+        return
+
+
 class Slider:
     """A horizontal scrubber — click or drag anywhere on the track to jump
     straight to that value, matching the Godot HUD's "Jump to turn" slider
@@ -182,6 +204,7 @@ class FilePickerModal:
     def __init__(self):
         self._title = ""
         self._files: list[str] = []
+        self._labels: list[str] = []
         self._on_select: Callable[[str], None] | None = None
         self._box_rect = pygame.Rect(0, 0, 0, 0)
         self._file_rects: list[pygame.Rect] = []
@@ -190,9 +213,13 @@ class FilePickerModal:
     def is_open(self) -> bool:
         return self._on_select is not None
 
-    def open(self, title: str, files: list[str], on_select: Callable[[str], None]) -> None:
+    def open(self, title: str, files: list[str], on_select: Callable[[str], None],
+             labels: list[str] | None = None) -> None:
+        """`labels`, if given, is what each row displays (e.g. a filename
+        plus its age for replays); selection still returns the file path."""
         self._title = title
         self._files = files
+        self._labels = labels if labels is not None else [_basename(p) for p in files]
         self._on_select = on_select
 
     def close(self) -> None:
@@ -226,7 +253,8 @@ class FilePickerModal:
         overlay.fill((0, 0, 0, 150))
         surface.blit(overlay, (0, 0))
 
-        box_w = 360
+        font = get_font(12)
+        box_w = max(360, max((font.size(lbl)[0] for lbl in self._labels), default=0) + 44)
         box_h = 56 + 28 * len(self._files)
         box_x = (screen_size[0] - box_w) // 2
         box_y = (screen_size[1] - box_h) // 2
@@ -236,11 +264,11 @@ class FilePickerModal:
 
         draw_text(surface, self._title, (box_x + 16, box_y + 14), size=14)
         rects = []
-        for i, path in enumerate(self._files):
+        for i, label in enumerate(self._labels):
             r = pygame.Rect(box_x + 12, box_y + 44 + i * 28, box_w - 24, 24)
             hovered = r.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
-            draw_text(surface, _basename(path), (r.x + 8, r.y + 4), size=12)
+            draw_text(surface, label, (r.x + 8, r.y + 4), size=12)
             rects.append(r)
         self._file_rects = rects
 

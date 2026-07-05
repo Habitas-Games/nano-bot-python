@@ -31,10 +31,14 @@ python main.py                  # launch the app (main menu)
 ```
 
 From the main menu: **Run Match** simulates a first match with default
-picks and opens the match window — change the map and both strategies
-with the pickers at the top of that window and press **Restart** to
-re-simulate in place. **Map Editor** opens the visual map editor.
-**Tournament** runs a round-robin over every strategy/map combination.
+picks and opens the match window — it starts playing immediately, fitted
+to the window. Change the map and both strategies with the pickers at the
+top of that window and press **Restart** to re-simulate in place
+(Space play/pause, arrows step, F re-fits, wheel zooms at the cursor;
+speeds up to 16x). **Map Editor** opens the visual map editor (Ctrl+S
+save, Ctrl+Z undo, middle-drag pans from any tool, and it warns before
+discarding unsaved changes). **Tournament** runs a round-robin over every
+strategy/map combination with live standings.
 
 ## Writing a strategy
 
@@ -114,7 +118,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-319 unit tests cover the core simulation engine and map-editor logic
+321 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real

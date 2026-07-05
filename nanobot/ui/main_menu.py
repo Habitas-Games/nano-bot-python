@@ -71,8 +71,11 @@ class MainMenu:
         cx = self.screen_size[0] // 2
         w, h, gap = 260, 44, 14
         # Lower third: the background art carries the title in the middle
-        # of the screen; buttons go below it rather than on top of it.
-        y = int(self.screen_size[1] * 0.66)
+        # of the screen; buttons go below it rather than on top of it —
+        # but never past the bottom edge (at 600px tall, a plain 0.66*h
+        # start put Quit half off-screen, verified by screenshot).
+        stack_h = 4 * h + 3 * gap
+        y = min(int(self.screen_size[1] * 0.66), self.screen_size[1] - stack_h - 16)
 
         self.btn_run = Button((cx - w // 2, y, w, h), "Run Match", on_click=self._run_match)
         y += h + gap
@@ -113,8 +116,11 @@ class MainMenu:
         else:
             surface.fill((18, 20, 26))
         if self._bg is not None:
+            # Anchored just above the button stack rather than at a fixed
+            # fraction of the screen, so the two can't overlap when the
+            # stack gets pushed up on short windows.
             draw_text(surface, "Program nanobots. Conquer living tissue.",
-                      (cx - 150, int(self.screen_size[1] * 0.60)), size=14, color=(200, 205, 218))
+                      (cx - 150, self.btn_run.rect.top - 34), size=14, color=(200, 205, 218))
         else:
             title_font_size = 36
             title = "nano-bot"
@@ -180,6 +186,16 @@ class MainMenu:
         if len(strategies) < 2 or not maps:
             self.message = "Need >= 2 strategies and >= 1 map to run a match"
             return
+
+        # Prefer a matchup known to stay competitive for a full match over
+        # a blind alphabetical pick — "first two alphabetically" was
+        # example_combat vs example_container, a 287-turn stomp ending
+        # 70-0 with player 2 wiped out (verified from last_match.json),
+        # which is the worst possible first impression of the game.
+        preferred = [os.path.join(STRATEGIES_DIR, n)
+                     for n in ("example_explorer.py", "example_defense.py")]
+        if all(p in strategies for p in preferred):
+            strategies = preferred
 
         self.running_match = True
         self.message = ""

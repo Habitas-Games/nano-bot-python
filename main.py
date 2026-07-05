@@ -15,6 +15,10 @@ from nanobot.ui.playback.playback_viewer import PlaybackViewer
 from nanobot.ui.tournament.tournament_ui import TournamentScreen
 
 WINDOW_SIZE = (1280, 800)
+# Below this, verified by screenshot: the menu's Quit button clips off the
+# bottom edge and the playback HUD's event ticker collides with the Bot
+# Inspector panel. Resizes get clamped back up to this instead.
+MIN_WINDOW_SIZE = (1024, 640)
 FPS = 60
 
 
@@ -23,6 +27,10 @@ class App:
         pygame.init()
         pygame.display.set_caption("nano-bot")
         self.screen = pygame.display.set_mode(WINDOW_SIZE, pygame.RESIZABLE)
+        # Holding an arrow key should keep stepping frames in the playback
+        # viewer (and keep erasing in the editor's filename box) — without
+        # this, pygame sends exactly one KEYDOWN per physical press.
+        pygame.key.set_repeat(280, 35)
         self.clock = pygame.time.Clock()
         self.running = True
 
@@ -69,7 +77,9 @@ class App:
                 if event.type == pygame.QUIT:
                     self.running = False
                 elif event.type == pygame.VIDEORESIZE:
-                    size = (event.w, event.h)
+                    size = (max(event.w, MIN_WINDOW_SIZE[0]), max(event.h, MIN_WINDOW_SIZE[1]))
+                    if size != (event.w, event.h):
+                        self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
                     self.menu.resize(size)
                     if self.editor:
                         self.editor.resize(size)
