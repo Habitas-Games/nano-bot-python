@@ -1,6 +1,6 @@
 """CLI usage (from project root):
 
-    python run_headless.py --map maps/simple_tissue.json \\
+    python run_headless.py --map maps/bone_maze.json \\
         --strategy_a strategies/example_strategy.py \\
         --strategy_b strategies/other_strategy.py \\
         [--seed 42] [--out replays/my_match.json]

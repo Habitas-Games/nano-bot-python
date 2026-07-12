@@ -82,7 +82,7 @@ strategy, not a snippet:
 
 ```bash
 # Headless: run one match between two strategies, save a replay
-python run_headless.py --map maps/simple_tissue.json \
+python run_headless.py --map maps/bone_maze.json \
     --strategy_a strategies/example_strategy.py \
     --strategy_b strategies/example_strategy_v2.py \
     --seed 42 --out replays/my_match.json

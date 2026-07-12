@@ -41,7 +41,7 @@ class ExampleStrategyV2(NanoStrategy):
                 nano_ai.build("NanoCollector", adj)
             elif target_hp is not None and nano_ai.position != target_hp.position:
                 # Boxed in: every immediate neighbor is Bone. Confirmed via
-                # execution on maps/vascular_network.json, whose player-0
+                # execution on vascular_network.json (shipped until v0.0.16), whose player-0
                 # spawn corner (0, 0) has both cardinal neighbors blocked —
                 # without this, NanoAI sat frozen at spawn for the entire
                 # match, building nothing, scoring 0 every time. Move

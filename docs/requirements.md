@@ -47,13 +47,13 @@ is imported as ordinary Python), mobile/web export.
 
 | ID | Requirement | Status |
 |---|---|---|
-| MAP-01 | The map is a 2D grid. Each map JSON declares its own width/height (shipped maps: 80×80 and 60×60; recommended max 200×200). Non-positive dimensions are rejected at load. | ✅ |
+| MAP-01 | The map is a 2D grid. Each map JSON declares its own width/height (shipped maps: 50×50 and 60×60; recommended max 200×200). Non-positive dimensions are rejected at load. | ✅ |
 | MAP-02 | Each cell has a tissue **density**: Low (move cost 2), Medium (3), High (4), or Bone (impassable). | ✅ |
 | MAP-03 | Cells may carry a directional **bloodstream** (N/S/E/W). Moving with the stream: −2 cost; against: +2; minimum cost always 1. | ✅ |
 | MAP-04 | Maps are external JSON files; new maps require no engine changes. | ✅ |
 | MAP-05 | Maps declare **Habitas Points** (scoring objectives), **AZN nodes** (position + finite quantity), a per-map **starting AZN budget**, and optional **white-cell hazards** (patrol path, HP, damage, contact range, speed). | ✅ |
 | MAP-06 | Maps declare one rectangular **injection zone per player**. A player spawns inside their zone; if the requested or default cell is impassable, the engine picks a random passable cell in the zone (seeded RNG — reproducible). | ✅ |
-| MAP-07 | The platform ships with at least **3 pre-built maps** of distinct character: Simple Tissue (open, beginner, hazard-free), Vascular Network (stream lanes + white-cell patrols), Bone Maze (labyrinth, arteries, patrols). | ✅ |
+| MAP-07 | The platform ships with **pre-built maps of distinct character**: Bone Maze (50×50 labyrinth, arteries, patrols) and Heart Chambers (60×60 chambered heart with a one-way bloodstream circuit, valve chokepoints, a contested central chamber, and patrols riding the flow). *Revision 3 (v0.0.16): Simple Tissue and Vascular Network were cut as the weakest maps — quality over count; the earlier "at least 3" target is dropped.* | ✅ |
 | MAP-08 | The map editor can author everything a map JSON can express — including which player owns an injection zone (sidebar Zone Owner toggle). Hazards are displayed and round-trip through save, but are authored in JSON (no hazard tool yet). | 🟡 |
 
 ### 4.2 Nanobot Types
@@ -173,10 +173,10 @@ What holds the fun back, in priority order:
 | ID | Requirement | Status |
 |---|---|---|
 | GAME-01 | **Fog of war.** `visible_enemies` contains only enemies within any friendly bot's Scan radius (Euclidean, floor 2 so nothing is blind to an adjacent enemy). Habitas/AZN positions stay global; enemy bots must be scouted. Replays store ground truth; the viewer shows all. | ✅ |
-| GAME-02 | **Immune-system hazards.** Maps declare patrolling white-cell hazards (looping path, HP, contact damage, speed). They attack the nearest bot of either player in range; collectors can shoot them; walls block their movement; blockers slow them. Data-driven per NFR-02; shipped on Vascular Network and Bone Maze. | ✅ |
+| GAME-02 | **Immune-system hazards.** Maps declare patrolling white-cell hazards (looping path, HP, contact damage, speed). They attack the nearest bot of either player in range; collectors can shoot them; walls block their movement; blockers slow them. Data-driven per NFR-02; shipped on both maps (Bone Maze, Heart Chambers). | ✅ |
 | GAME-03 | **Combat counterplay.** Attacks require line of sight — Bone and alive NanoWalls (either player's) on the segment block the shot. Acceptance verified by test: a needle ringed by walls takes zero damage from a lone attacker. `example_defense` demonstrates the affordable form: a watchtower explorer spots raiders and the NanoAI drops a reactive wall on the firing line (builds resolve before attacks). | ✅ |
 | GAME-04 | **Habitas exclusivity.** Building a NanoNeedle on a cell already holding an alive needle fails with a logged `habitas_occupied` event. First claim holds; the point reopens when the needle dies. | ✅ |
-| GAME-05 | **Third shipped map**: Bone Maze — a 50×50 marrow labyrinth with stream arteries, pocketed objectives, and two white-cell patrols. Every objective verified reachable from both spawns with the real pathfinder before shipping. | ✅ |
+| GAME-05 | **Maps with real character**: Bone Maze — a 50×50 marrow labyrinth with stream arteries, pocketed objectives, and two white-cell patrols; joined in v0.0.16 by Heart Chambers (see MAP-07). Every objective on every shipped map verified reachable from both spawns with the real pathfinder before shipping. | ✅ |
 | UX-01 | **Replay browser**: the match window's "Replays..." button opens any saved replay (tournament and headless runs included), newest first. | ✅ |
 | UX-02 | **Zone owner selector** in the map editor sidebar (P1/P2 toggle); the status bar names the owner new zones will get. | ✅ |
 | UX-03 | **Event VFX + menu art**: effect animations wired per VIS-08; the main menu uses the background art (title baked in) with buttons in the lower third. | ✅ |

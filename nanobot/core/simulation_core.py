@@ -236,7 +236,7 @@ class SimulationCore:
                     return (rx, ry)
                 # The zone's own literal corner can be impassable even
                 # when the rest of the zone isn't — confirmed on
-                # maps/vascular_network.json, whose player-0 zone is
+                # vascular_network.json (shipped until v0.0.16), whose player-0 zone is
                 # (0,0)-(4,4) with a Bone border sealing exactly the
                 # (0, 0) corner while the interior (1,1)-(4,4) is fully
                 # open. Spawning a NanoAI on an impassable cell traps it

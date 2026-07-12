@@ -30,7 +30,7 @@ def make_sim(width=10, height=10, players=2):
 
 class TestDefaultInjectionPoint:
     def test_skips_impassable_corner_within_an_otherwise_open_zone(self):
-        # Confirmed on maps/vascular_network.json: a 5x5 player-0 zone
+        # Confirmed on vascular_network.json (shipped until v0.0.16): a 5x5 player-0 zone
         # (0,0)-(4,4) with a Bone border that happens to seal exactly the
         # (0, 0) corner, while the rest of the zone is fully passable.
         # Spawning on an impassable cell traps the NanoAI permanently —
@@ -50,8 +50,8 @@ class TestDefaultInjectionPoint:
         assert sim._map.is_passable(spawn[0], spawn[1])
 
     def test_still_uses_the_corner_when_it_is_passable(self):
-        # No regression for the common case (every existing test fixture
-        # and the bundled simple_tissue.json): an already-passable corner
+        # No regression for the common case (every existing test fixture,
+        # plus simple_tissue.json while it shipped): an already-passable corner
         # is used as-is, not replaced by some other cell in the zone.
         sim = make_sim()
         spawn = next(b.position for b in sim._bots if b.owner_id == 0)

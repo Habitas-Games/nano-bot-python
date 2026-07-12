@@ -34,7 +34,7 @@ class TestExecuteErrorPaths:
         # the same class of fix as every other "fail loudly but cleanly
         # on bad input" change in this version.
         result = _execute({
-            "map": "maps/simple_tissue.json",
+            "map": "maps/bone_maze.json",
             "strategy_a": "strategies/example_strategy.py",
             "strategy_b": "strategies/example_strategy_v2.py",
             "seed": "not_a_number",
@@ -44,7 +44,7 @@ class TestExecuteErrorPaths:
     def test_valid_run_with_explicit_seed_succeeds(self, tmp_path):
         out_path = str(tmp_path / "replay.json")
         result = _execute({
-            "map": "maps/simple_tissue.json",
+            "map": "maps/bone_maze.json",
             "strategy_a": "strategies/example_strategy.py",
             "strategy_b": "strategies/example_strategy_v2.py",
             "seed": "7",

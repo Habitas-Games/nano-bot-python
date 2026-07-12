@@ -47,7 +47,7 @@ class TestFailureIsolation:
 
         with mock.patch.object(SimulationCore, "run", side_effect=RuntimeError("boom")):
             runner.start(["strategies/example_strategy.py", "strategies/example_strategy_v2.py"],
-                         ["maps/simple_tissue.json"])
+                         ["maps/bone_maze.json"])
             runner.wait()
 
         assert not runner._thread.is_alive()
@@ -57,7 +57,7 @@ class TestFailureIsolation:
         runner = TournamentRunner()
         with mock.patch.object(SimulationCore, "run", side_effect=RuntimeError("boom")):
             runner.start(["strategies/example_strategy.py", "strategies/example_strategy_v2.py"],
-                         ["maps/simple_tissue.json"])
+                         ["maps/bone_maze.json"])
             runner.wait()
 
         assert len(runner.results) == 1
@@ -71,7 +71,7 @@ class TestFailureIsolation:
 
         with mock.patch.object(SimulationCore, "run", side_effect=RuntimeError("boom")):
             runner.start(["strategies/example_strategy.py", "strategies/example_strategy_v2.py"],
-                         ["maps/simple_tissue.json"])
+                         ["maps/bone_maze.json"])
             runner.wait()
 
         assert progress_calls == [(1, 1)]
@@ -95,7 +95,7 @@ class TestFailureIsolation:
         with mock.patch.object(SimulationCore, "run", flaky_run):
             runner.start(
                 [f"{strategies_dir}/example_strategy.py", f"{strategies_dir}/example_strategy_v2.py"],
-                [f"{maps_dir}/simple_tissue.json", f"{maps_dir}/vascular_network.json"],
+                [f"{maps_dir}/bone_maze.json", f"{maps_dir}/heart_chambers.json"],
             )
             runner.wait()
 

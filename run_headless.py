@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point: python run_headless.py --map maps/simple_tissue.json --strategy_a ... --strategy_b ..."""
+"""Entry point: python run_headless.py --map maps/bone_maze.json --strategy_a ... --strategy_b ..."""
 
 import sys
 
