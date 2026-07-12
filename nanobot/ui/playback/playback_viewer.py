@@ -20,12 +20,14 @@ import time
 
 import pygame
 
+from nanobot.core import user_prefs
 from nanobot.core.map_data import Density, MapData, StreamDir
 from nanobot.core.map_loader import load_from_file
 from nanobot.core.match_log import MatchLog
 from nanobot.core.simulation_core import SimulationCore
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, FilePickerModal, Slider, draw_hover_tooltips, draw_text, get_font
+from nanobot.ui.widgets import (Button, FileBrowserModal, FilePickerModal, Slider,
+                                draw_hover_tooltips, draw_text, get_font)
 
 CELL_SIZE = 14
 SIDEBAR_WIDTH = 260
@@ -89,7 +91,11 @@ def _load_fx(prefix: str) -> list["pygame.Surface"]:
 
 
 class PlaybackViewer:
-    def __init__(self, screen_size: tuple[int, int], replay_path: str):
+    def __init__(self, screen_size: tuple[int, int], replay_path: str | None = None):
+        """`replay_path=None` opens the match workspace empty: nothing is
+        auto-simulated and nothing is auto-picked — the user chooses a map
+        and strategies (restored from their last session when available)
+        and presses Run Match."""
         self.screen_size = screen_size
 
         self.bot_sprites: dict[str, "pygame.Surface | None"] = {}
@@ -155,40 +161,42 @@ class PlaybackViewer:
         self.canvas_rect = pygame.Rect(0, CONTROL_BAR_HEIGHT, 0, 0)
         self._recompute_canvas_rect()
 
+        self.browser = FileBrowserModal()
+
         self.log: MatchLog | None = None
         self.map: MapData | None = None
         self.current_frame = 0
-        self._load_replay(replay_path)
+        if replay_path is not None:
+            self._load_replay(replay_path)
+        else:
+            self._index_replay()
 
-        # What the picker buttons show and what Restart will use — seeded
-        # from whatever produced the currently-loaded replay, so the
-        # selectors start out describing what's actually on screen.
-        self.selected_map: str | None = None
-        self.selected_p0: str | None = None
-        self.selected_p1: str | None = None
-        self._init_selection_from_log()
+        # What the picker buttons show and what Run/Restart will use.
+        # Restored from the last session's choices (user_prefs) — never
+        # auto-filled with "first file in some folder": an unset slot
+        # stays visibly unset until the user picks.
+        self.selected_map: str | None = user_prefs.existing_file("last_map")
+        last = user_prefs.existing_files("last_strategies")
+        self.selected_p0: str | None = last[0] if len(last) > 0 else None
+        self.selected_p1: str | None = last[1] if len(last) > 1 else None
+        if self.log is not None:
+            self._init_selection_from_log()
 
         self._build_controls()
 
     def _init_selection_from_log(self) -> None:
+        """Point the selectors at whatever produced the loaded replay, so
+        they describe what's on screen — but only where those files still
+        exist; missing ones keep the current (prefs-restored) selection
+        rather than being auto-filled from a folder listing."""
         strategies = list(self.log.player_strategies) if self.log else []
-        self.selected_p0 = strategies[0] if len(strategies) > 0 and os.path.exists(strategies[0]) else None
-        self.selected_p1 = strategies[1] if len(strategies) > 1 and os.path.exists(strategies[1]) else None
-        self.selected_map = self._resolve_map_path(self.log.map_name) if self.log else None
-
-        # Fall back to whatever's actually available rather than leaving a
-        # picker stuck on "(none found)" just because the replay that
-        # happened to be loaded first didn't have a resolvable map/strategy
-        # (e.g. a hand-edited replay, or a strategy file since deleted).
-        if self.selected_map is None:
-            maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-            self.selected_map = maps[0] if maps else None
-        if self.selected_p0 is None or self.selected_p1 is None:
-            strategies = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
-            if self.selected_p0 is None:
-                self.selected_p0 = strategies[0] if strategies else None
-            if self.selected_p1 is None:
-                self.selected_p1 = strategies[1] if len(strategies) > 1 else (strategies[0] if strategies else None)
+        if len(strategies) > 0 and os.path.exists(strategies[0]):
+            self.selected_p0 = strategies[0]
+        if len(strategies) > 1 and os.path.exists(strategies[1]):
+            self.selected_p1 = strategies[1]
+        map_path = self._resolve_map_path(self.log.map_name) if self.log else None
+        if map_path is not None:
+            self.selected_map = map_path
 
     def _load_replay(self, replay_path: str) -> None:
         self.log = MatchLog.load_from_file(replay_path)
@@ -354,34 +362,37 @@ class PlaybackViewer:
                           self.btn_load_replay, self.btn_seed_lock]
 
     def _refresh_selector_labels(self) -> None:
-        def name(path: str | None) -> str:
-            return os.path.basename(path).rsplit(".", 1)[0] if path else "(none found)"
-        self.btn_select_map.text = f"Map: {name(self.selected_map)}"
-        self.btn_select_p0.text = f"P1: {name(self.selected_p0)}"
-        self.btn_select_p1.text = f"P2: {name(self.selected_p1)}"
+        def name(path: str | None, empty: str) -> str:
+            return os.path.basename(path).rsplit(".", 1)[0] if path else empty
+        self.btn_select_map.text = f"Map: {name(self.selected_map, '(pick a map)')}"
+        self.btn_select_p0.text = f"P1: {name(self.selected_p0, '(pick strategy)')}"
+        self.btn_select_p1.text = f"P2: {name(self.selected_p1, '(pick strategy)')}"
+        self.btn_restart.text = "Restart" if self.log is not None else "Run Match"
 
     def _open_map_picker(self) -> None:
-        files = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-        if not files:
-            self.match_message = "No maps found in maps/"
-            return
-        self.picker.open("Select map", files, lambda path: self._apply_picker_choice("map", path))
+        # Browses the whole filesystem, starting where the user last
+        # picked a map (maps/ only as the first-run default) — map files
+        # aren't confined to the project folder.
+        start = user_prefs.existing_dir("last_map_dir", os.path.abspath(MAPS_DIR))
+        self.browser.open("Select map (.json)", start, (".json",),
+                          lambda paths: self._apply_picker_choice("map", paths[0]))
 
     def _open_strategy_picker(self, slot: str) -> None:
-        files = sorted(glob.glob(os.path.join(STRATEGIES_DIR, "*.py")))
-        if not files:
-            self.match_message = "No strategies found in strategies/"
-            return
+        start = user_prefs.existing_dir("last_strategy_dir", os.path.abspath(STRATEGIES_DIR))
         label = "Player 1" if slot == "p0" else "Player 2"
-        self.picker.open(f"Select {label} strategy", files, lambda path: self._apply_picker_choice(slot, path))
+        self.browser.open(f"Select {label} strategy (.py)", start, (".py",),
+                          lambda paths: self._apply_picker_choice(slot, paths[0]))
 
     def _apply_picker_choice(self, slot: str, path: str) -> None:
         if slot == "map":
             self.selected_map = path
+            user_prefs.update(last_map_dir=os.path.dirname(path))
         elif slot == "p0":
             self.selected_p0 = path
+            user_prefs.update(last_strategy_dir=os.path.dirname(path))
         elif slot == "p1":
             self.selected_p1 = path
+            user_prefs.update(last_strategy_dir=os.path.dirname(path))
         self._refresh_selector_labels()
 
     def _toggle_seed_lock(self) -> None:
@@ -432,8 +443,12 @@ class PlaybackViewer:
         missing = [p for p in (self.selected_map, self.selected_p0, self.selected_p1)
                    if p is None or not os.path.exists(p)]
         if missing:
-            self.match_message = "Select a map and both strategies before restarting"
+            self.match_message = "Pick a map and both strategies first (buttons above)"
             return
+
+        # Remember what's being run, so the next app start restores it.
+        user_prefs.update(last_map=self.selected_map,
+                          last_strategies=[self.selected_p0, self.selected_p1])
 
         if not (self.seed_locked and self.match_seed is not None):
             self.match_seed = random.randrange(1_000_000)
@@ -452,6 +467,11 @@ class PlaybackViewer:
     def _match_worker(self, map_path: str, strategy_paths: list[str], seed: int) -> None:
         try:
             map_data = load_from_file(map_path)
+            if map_data is None:
+                # Reachable now that the picker browses anywhere: any
+                # .json can be chosen, not just files from maps/.
+                self._match_result = {"error": f"Not a valid map file: {os.path.basename(map_path)}"}
+                return
             sim = SimulationCore(map_data, strategy_paths, seed=seed)
             log = sim.run()
 
@@ -540,6 +560,7 @@ class PlaybackViewer:
                     self.turn_slider.set_range(0, max_frame)
                     self.turn_slider.set_value(0)
                     self._compute_hud_layout()
+                    self._refresh_selector_labels()  # "Run Match" -> "Restart" after the first run
             return
 
         if not self.playing or self.log is None or not self.log.frames:
@@ -555,6 +576,8 @@ class PlaybackViewer:
                 break
 
     def handle_event(self, event: "pygame.event.Event") -> None:
+        if self.browser.handle_event(event):
+            return
         if self.picker.handle_event(event):
             return
         if self.running_match:
@@ -650,6 +673,8 @@ class PlaybackViewer:
         pygame.draw.line(surface, (12, 12, 16), (0, TOP_ROW_HEIGHT), (self.screen_size[0], TOP_ROW_HEIGHT), 1)
         for btn in self.controls:
             btn.enabled = not self.running_match
+            if btn is self.turn_slider and (self.log is None or not self.log.frames):
+                continue  # nothing to scrub yet — a lone handle floating in the empty HUD reads as a glitch
             btn.draw(surface)
         speed_label = f"{SPEEDS[self.speed_index]}x"
         # Positioned relative to the actual button rects, not hardcoded
@@ -672,9 +697,19 @@ class PlaybackViewer:
             surface.blit(hint_surf, (hint_x, self.btn_speed_down.rect.y + 9))
 
         if self.log is None or not self.log.frames:
-            draw_text(surface, "No replay loaded / empty match log", (20, CONTROL_BAR_HEIGHT + 20), size=16, color=(220, 100, 100))
+            # Empty workspace (nothing auto-runs anymore): say what to do
+            # next instead of the old "No replay loaded" error tone.
+            cx = 24
+            cy = CONTROL_BAR_HEIGHT + 36
+            draw_text(surface, "No match yet.", (cx, cy), size=18, color=(220, 222, 230))
+            draw_text(surface, "Pick a map and both strategies with the buttons above, then press Run Match.",
+                      (cx, cy + 30), size=13, color=(170, 174, 188))
+            draw_text(surface, "Or open a previous match with Replays...",
+                      (cx, cy + 52), size=13, color=(170, 174, 188))
             self._draw_status_strip(surface)
+            draw_hover_tooltips(surface, [b for b in self.controls if isinstance(b, Button)])
             self.picker.draw(surface, self.screen_size)
+            self.browser.draw(surface, self.screen_size)
             return
 
         frame = self.log.frames[self.current_frame]
@@ -698,6 +733,7 @@ class PlaybackViewer:
         draw_hover_tooltips(surface, [b for b in self.controls if isinstance(b, Button)])
 
         self.picker.draw(surface, self.screen_size)
+        self.browser.draw(surface, self.screen_size)
 
     def _draw_status_strip(self, surface: "pygame.Surface") -> None:
         """Match status (running spinner / last result) on its own

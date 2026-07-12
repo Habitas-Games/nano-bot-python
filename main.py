@@ -52,7 +52,7 @@ class App:
             self.editor.on_back_to_menu = self._back_to_menu
         self.current = self.editor
 
-    def _open_playback(self, replay_path: str) -> None:
+    def _open_playback(self, replay_path: str | None) -> None:
         self.playback = PlaybackViewer(self.screen.get_size(), replay_path)
         self.playback.on_back_to_menu = self._back_to_menu
         self.current = self.playback
@@ -98,9 +98,10 @@ class App:
                     # since MapEditorScreen uses a bare self.modal dict and
                     # PlaybackViewer uses a self.picker FilePickerModal —
                     # different shapes, same "is something open" question.
-                    picker = getattr(self.current, "picker", None)
                     has_modal = getattr(self.current, "modal", None) is not None
-                    has_picker = picker is not None and picker.is_open
+                    has_picker = any(
+                        getattr(getattr(self.current, name, None), "is_open", False)
+                        for name in ("picker", "browser"))
                     if has_modal or has_picker:
                         self.current.handle_event(event)
                     else:

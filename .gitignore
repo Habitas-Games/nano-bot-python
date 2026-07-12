@@ -4,3 +4,4 @@ __pycache__/
 replays/*.json
 !replays/.gitkeep
 .pytest_cache/
+.nanobot_prefs.json

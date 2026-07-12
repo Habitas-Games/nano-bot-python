@@ -4,6 +4,7 @@ playback controls so each doesn't reinvent button hit-testing/rendering."""
 
 from __future__ import annotations
 
+import os
 from typing import Callable
 
 import pygame
@@ -275,3 +276,193 @@ class FilePickerModal:
 
 def _basename(path: str) -> str:
     return path.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+class FileBrowserModal:
+    """A navigable file browser modal: shows the current folder's
+    subdirectories plus files matching the given extensions, click a
+    folder to enter it (".." to go up), click a file to choose it. In
+    multi-select mode files toggle a checkmark instead and an "Add"
+    button confirms the whole set at once — one at a time or several
+    in a single visit both work.
+
+    Unlike FilePickerModal (a fixed list for cases like "recent
+    replays"), this browses the real filesystem: map and strategy
+    files are no longer confined to the project's maps/ and
+    strategies/ folders."""
+
+    ROW_H = 26
+
+    def __init__(self):
+        self._title = ""
+        self._dir = ""
+        self._extensions: tuple[str, ...] = ()
+        self._on_select: "Callable[[list[str]], None] | None" = None
+        self._multi = False
+        self._selected: set[str] = set()
+        self._scroll = 0
+        self._box_rect = pygame.Rect(0, 0, 0, 0)
+        self._row_rects: list[tuple[pygame.Rect, str, bool]] = []  # (rect, path, is_dir)
+        self._confirm_rect: pygame.Rect | None = None
+        self._cancel_rect: pygame.Rect | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self._on_select is not None
+
+    def open(self, title: str, start_dir: str, extensions: tuple[str, ...],
+             on_select: "Callable[[list[str]], None]", multi: bool = False) -> None:
+        """`on_select` always receives a list of absolute paths (length 1
+        in single mode). `extensions` like (".py",)."""
+        self._title = title
+        self._dir = os.path.abspath(start_dir if os.path.isdir(start_dir) else os.path.expanduser("~"))
+        self._extensions = extensions
+        self._on_select = on_select
+        self._multi = multi
+        self._selected = set()
+        self._scroll = 0
+
+    def close(self) -> None:
+        self._on_select = None
+
+    def _entries(self) -> list[tuple[str, bool]]:
+        """(absolute path, is_dir) — parent first, then dirs, then
+        matching files, both alphabetical; hidden/cache dirs skipped."""
+        entries: list[tuple[str, bool]] = []
+        parent = os.path.dirname(self._dir)
+        if parent != self._dir:
+            entries.append((parent, True))
+        try:
+            names = sorted(os.listdir(self._dir), key=str.lower)
+        except OSError:
+            names = []
+        for name in names:
+            if name.startswith(".") or name == "__pycache__":
+                continue
+            full = os.path.join(self._dir, name)
+            if os.path.isdir(full):
+                entries.append((full, True))
+        for name in names:
+            if name.startswith("."):
+                continue
+            full = os.path.join(self._dir, name)
+            if os.path.isfile(full) and name.lower().endswith(self._extensions):
+                entries.append((full, False))
+        return entries
+
+    def _finish(self, paths: list[str]) -> None:
+        on_select = self._on_select
+        self.close()
+        if on_select and paths:
+            on_select(paths)
+
+    def handle_event(self, event: "pygame.event.Event") -> bool:
+        if not self.is_open:
+            return False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.close()
+            elif event.key == pygame.K_RETURN and self._multi and self._selected:
+                self._finish(sorted(self._selected))
+            return True
+        if event.type == pygame.MOUSEWHEEL:
+            self._scroll = max(0, self._scroll - event.y * 2)
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._confirm_rect and self._confirm_rect.collidepoint(event.pos) \
+                    and self._multi and self._selected:
+                self._finish(sorted(self._selected))
+                return True
+            if self._cancel_rect and self._cancel_rect.collidepoint(event.pos):
+                self.close()
+                return True
+            for rect, path, is_dir in self._row_rects:
+                if rect.collidepoint(event.pos):
+                    if is_dir:
+                        self._dir = path
+                        self._scroll = 0
+                    elif self._multi:
+                        self._selected.symmetric_difference_update({path})
+                    else:
+                        self._finish([path])
+                    return True
+            if not self._box_rect.collidepoint(event.pos):
+                self.close()
+            return True
+        # swallow everything else while open (modal)
+        return event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION)
+
+    def _shorten(self, path: str, max_px: int, font: "pygame.font.Font") -> str:
+        if font.size(path)[0] <= max_px:
+            return path
+        while path and font.size("..." + path)[0] > max_px:
+            path = path[1:]
+        return "..." + path
+
+    def draw(self, surface: "pygame.Surface", screen_size: tuple[int, int]) -> None:
+        if not self.is_open:
+            return
+        overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        surface.blit(overlay, (0, 0))
+
+        box_w = min(640, screen_size[0] - 60)
+        box_h = min(520, screen_size[1] - 60)
+        box_x = (screen_size[0] - box_w) // 2
+        box_y = (screen_size[1] - box_h) // 2
+        self._box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+        pygame.draw.rect(surface, (45, 48, 58), self._box_rect, border_radius=6)
+        pygame.draw.rect(surface, (90, 95, 110), self._box_rect, width=2, border_radius=6)
+
+        draw_text(surface, self._title, (box_x + 16, box_y + 12), size=14)
+        font12 = get_font(12)
+        draw_text(surface, self._shorten(self._dir, box_w - 32, font12),
+                  (box_x + 16, box_y + 34), size=12, color=(150, 155, 168))
+
+        list_top = box_y + 56
+        footer_h = 44
+        visible = max(1, (box_h - (list_top - box_y) - footer_h) // self.ROW_H)
+        entries = self._entries()
+        max_scroll = max(0, len(entries) - visible)
+        self._scroll = min(self._scroll, max_scroll)
+        mouse = pygame.mouse.get_pos()
+
+        rows = []
+        for i, (path, is_dir) in enumerate(entries[self._scroll:self._scroll + visible]):
+            r = pygame.Rect(box_x + 12, list_top + i * self.ROW_H, box_w - 24, self.ROW_H - 2)
+            hovered = r.collidepoint(mouse)
+            pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
+            if is_dir:
+                # The parent entry is the only dir equal to dirname(cwd)
+                # (children are strictly below it), so this is unambiguous.
+                name = ".." if path == os.path.dirname(self._dir) else os.path.basename(path)
+                draw_text(surface, f"[{name}]", (r.x + 8, r.y + 5), size=12, color=(150, 190, 235))
+            else:
+                x = r.x + 8
+                if self._multi:
+                    cb = pygame.Rect(x, r.y + 6, 13, 13)
+                    pygame.draw.rect(surface, (20, 22, 30), cb, border_radius=2)
+                    pygame.draw.rect(surface, (120, 126, 142), cb, width=1, border_radius=2)
+                    if path in self._selected:
+                        pygame.draw.rect(surface, (110, 200, 130), cb.inflate(-5, -5), border_radius=1)
+                    x = cb.right + 8
+                draw_text(surface, os.path.basename(path), (x, r.y + 5), size=12)
+            rows.append((r, path, is_dir))
+        self._row_rects = rows
+
+        if max_scroll > 0:
+            draw_text(surface, f"{self._scroll + 1}-{min(len(entries), self._scroll + visible)} of {len(entries)} (scroll)",
+                      (box_x + 16, box_y + box_h - footer_h + 16), size=10, color=(120, 124, 138))
+
+        self._confirm_rect = None
+        if self._multi:
+            n = len(self._selected)
+            confirm = Button((box_x + box_w - 240, box_y + box_h - 38, 110, 28), f"Add ({n})")
+            confirm.enabled = n > 0
+            confirm.hovered = confirm.rect.collidepoint(mouse)
+            confirm.draw(surface)
+            self._confirm_rect = confirm.rect
+        cancel = Button((box_x + box_w - 116, box_y + box_h - 38, 100, 28), "Cancel")
+        cancel.hovered = cancel.rect.collidepoint(mouse)
+        cancel.draw(surface)
+        self._cancel_rect = cancel.rect

@@ -30,15 +30,16 @@ pip install -r requirements.txt
 python main.py                  # launch the app (main menu)
 ```
 
-From the main menu: **Run Match** simulates a first match with default
-picks and opens the match window — it starts playing immediately, fitted
-to the window. Change the map and both strategies with the pickers at the
-top of that window and press **Restart** to re-simulate in place
-(Space play/pause, arrows step, F re-fits, wheel zooms at the cursor;
-speeds up to 16x). **Map Editor** opens the visual map editor (Ctrl+S
-save, Ctrl+Z undo, middle-drag pans from any tool, and it warns before
-discarding unsaved changes). **Tournament** runs a round-robin over every
-strategy/map combination with live standings.
+From the main menu: **Run Match** opens the match window. Pick a map and
+both strategies with the file-browser buttons at the top (they can browse
+anywhere on disk, remember the last folder per type, and restore your
+last selections across restarts), then press **Run Match** — the result
+opens playing, fitted to the window (Space play/pause, arrows step, F
+re-fits, wheel zooms at the cursor; speeds up to 16x). **Map Editor**
+opens the visual map editor (Ctrl+S save, Ctrl+Z undo, middle-drag pans
+from any tool, and it warns before discarding unsaved changes).
+**Tournament** runs a round-robin over competitors you add explicitly
+(multi-select supported), across every shipped map, with live standings.
 
 ## Writing a strategy
 

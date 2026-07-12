@@ -119,14 +119,14 @@ implemented and verified by example strategies that exercise them.
 | VIS-04 | Controls: play/pause (Space), step ±1 (←/→, hold to repeat), Home/End, speed 0.25×–16×, and a **jump-to-turn slider**. Wheel zoom is anchored at the cursor; pan via left-drag (click-without-drag selects a bot) or middle-drag, clamped so the map can't be lost; F (or loading any replay) fits the whole map in view. A hint line in the top bar lists the shortcuts. | ✅ |
 | VIS-05 | HUD: map name, turn counter, per-player score + bots alive (labels are 1-indexed: "Player 1"/"Player 2"), winner line, map legend, and an always-visible bot inspector. | ✅ |
 | VIS-06 | Habitas Points render neutral (gold) or tinted with the owning team's color; stored AZN is labeled. | ✅ |
-| VIS-07 | **Match setup lives in the match window**: Map / Player 1 / Player 2 pickers plus a Restart button re-simulate in place on a background thread. The main menu is a plain launcher. | ✅ |
+| VIS-07 | **Match setup lives in the match window**: Map / Player 1 / Player 2 pickers plus a Run Match/Restart button that simulates in place on a background thread. Nothing auto-runs and nothing is auto-picked — the window opens empty with the last session's selections restored (persisted in `.nanobot_prefs.json`); unset slots stay visibly unset. Pickers are real file browsers (navigate anywhere, not just the project folders) that remember the last folder per type (maps vs strategies). The main menu is a plain launcher. | ✅ |
 | VIS-08 | Event effects render where they happen: attack tracers + impact flashes, build sparkles, collect glints, destruction bursts, white-cell pulses — plus an **Events ticker** in the HUD narrating notable moments (builds, kills, expiries) up to the current turn. | ✅ |
 
 ### 4.7 Tournament Mode
 
 | ID | Requirement | Status |
 |---|---|---|
-| TRN-01 | Round-robin: every strategy vs every other, on every shipped map. | ✅ |
+| TRN-01 | Round-robin over a **user-chosen field of competitors** (added via a file browser, one at a time or several per visit with multi-select; removable per row), on every shipped map. *Revision 4 (v0.0.17): replaces "everything in strategies/" — the field is chosen, not whatever a folder happens to contain.* | ✅ |
 | TRN-02/03 | Results accumulate into a leaderboard (W/L/D, points), shown in-app and exported to `tournament_results.json`; every match's replay is saved. | ✅ |
 | TRN-04 | DQ'd strategies (load error, timeout) appear on the leaderboard as DQ, never silently skipped. One failed match cannot kill the run. | ✅ |
 | TRN-05 | A dedicated summary view highlights the top finishers. | ✅ (ranks 1–3 get podium colors; standings render live while the tournament runs, and it can be re-run without restarting the app) |
