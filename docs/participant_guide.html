@@ -558,6 +558,169 @@
 
 </div>
 
+<h2 id="bot-programming">Programming each bot</h2>
+
+<p>
+  Everything below is driven from <code>what_to_do_next(map_info, my_bots)</code>, called
+  once per turn. Each bot accepts <strong>one action per turn — the last call wins</strong>
+  (calling <code>move_to()</code> then <code>defend()</code> on the same bot in the same turn
+  leaves only the <code>defend()</code>). It is safe (and idiomatic) to re-issue the same
+  order every turn: <code>move_to()</code> keeps its computed path cached, and a
+  <code>collect_from()</code>/<code>transfer_to()</code> simply continues at 5 AZN per turn.
+</p>
+
+<div class="callout info">
+  <div class="callout-title">The golden rule of logistics</div>
+  <code>collect_from()</code> and <code>transfer_to()</code> only work when the bot is
+  <strong>standing on the target cell</strong> — on the AZN node, on the needle's cell,
+  on the container's cell. There is no collecting or feeding at a distance: walk there
+  first (<code>move_to</code>), then issue the action every turn until done.
+</div>
+
+<h3>NanoAI — the builder</h3>
+<p>
+  Spawns free at the cell your <code>choose_injection_point()</code> returns. It is the
+  <em>only</em> bot whose <code>build(bot_type, at_position)</code> works, and the build
+  target must be <strong>exactly 1 cell away</strong> (Manhattan distance 1) and passable.
+  The cost is paid from your bank the moment the build succeeds, and the new bot exists
+  <em>that same turn</em> — builds resolve before combat, which is what makes reactive
+  walls possible (see NanoWall). If the NanoAI dies you can never build again, and with
+  only Scan 5 it barely sees — keep it out of fights.
+</p>
+<pre><code><span class="cmt"># Build a collector on any free cell next to the AI.</span>
+ai = <span class="kw">next</span>(b <span class="kw">for</span> b <span class="kw">in</span> my_bots <span class="kw">if</span> b.type == <span class="str">"NanoAI"</span>)
+<span class="kw">if</span> map_info.azn_bank &gt;= <span class="num">20</span>:
+    x, y = ai.position
+    <span class="kw">for</span> nx, ny <span class="kw">in</span> ((x+<span class="num">1</span>,y), (x-<span class="num">1</span>,y), (x,y+<span class="num">1</span>), (x,y-<span class="num">1</span>)):
+        cell = map_info.<span class="fn">get_cell</span>(nx, ny)
+        <span class="kw">if</span> cell <span class="kw">is not</span> <span class="kw">None</span> <span class="kw">and not</span> cell.is_bone:
+            ai.<span class="fn">build</span>(<span class="str">"NanoCollector"</span>, (nx, ny))
+            <span class="kw">break</span>
+</code></pre>
+
+<h3>NanoExplorer — the eyes</h3>
+<p>
+  Two abilities, both passive. <strong>Density immunity</strong>: it pays the minimum
+  movement cost through Low, Medium and High tissue alike (Bone still stops it, and
+  bloodstreams still push it around), so it crosses the map far faster than anything else.
+  <strong>Scan 30</strong>: under fog of war, <code>map_info.visible_enemies</code> and
+  <code>map_info.hazards</code> only contain what is inside some friendly bot's scan
+  radius — and at Scan 30 the Explorer <em>is</em> that radius. Everything else scans
+  0–5. Two proven patterns: the <em>sweeping scout</em> (ping-pong between the enemy
+  corner and the map center, feeding targets to your collectors) and the
+  <em>watchtower</em> (park it on your needle so raiders are spotted at range 30 before
+  they can shoot at range 12).
+</p>
+<pre><code><span class="cmt"># Watchtower: park on the needle; sweep only while there's nothing to guard.</span>
+<span class="kw">if</span> needle <span class="kw">is not</span> <span class="kw">None</span>:
+    explorer.<span class="fn">move_to</span>(needle.position)      <span class="cmt"># stands guard, lights up range 30</span>
+<span class="kw">else</span>:
+    explorer.<span class="fn">move_to</span>(sweep_target)          <span class="cmt"># scout until the needle exists</span>
+</code></pre>
+
+<h3>NanoCollector — the worker (and the only gun)</h3>
+<p>
+  The economy and the army in one 20-AZN body. <strong>Harvesting</strong>: stand on an
+  AZN node and <code>collect_from(node.position)</code> — 5 AZN per turn into its
+  20-capacity hold. <strong>Delivering</strong>: stand on the receiving bot's cell and
+  <code>transfer_to(that_cell)</code> — 5 AZN per turn into any friendly bot with
+  capacity (needle, container, even another collector); or stand inside any of your
+  injection zones and <code>transfer_to(bot.position)</code> to deposit into your
+  <em>bank</em> (which is what pays for builds). <strong>Fighting</strong>:
+  <code>defend(enemy_position)</code> fires at that exact cell — range 12
+  (straight-line distance), 1–5 random damage, blocked by Bone and by any alive
+  NanoWall on the firing line. It also kills white cells. Remember its own Scan is 0:
+  it can only shoot what a teammate (Explorer) can see.
+</p>
+<pre><code><span class="cmt"># Priority: shoot what's visible &gt; deliver a full load &gt; keep harvesting.</span>
+<span class="kw">if</span> map_info.visible_enemies:
+    target = map_info.visible_enemies[<span class="num">0</span>]   <span class="cmt"># dict: {"id", "type", "position", "hp"}</span>
+    <span class="kw">if</span> <span class="fn">dist</span>(collector.position, target[<span class="str">"position"</span>]) &lt;= <span class="num">12</span>:
+        collector.<span class="fn">defend</span>(target[<span class="str">"position"</span>])
+<span class="kw">elif</span> collector.azn &gt;= <span class="num">15</span> <span class="kw">and</span> needle <span class="kw">is not</span> <span class="kw">None</span>:
+    <span class="kw">if</span> collector.position == needle.position:
+        collector.<span class="fn">transfer_to</span>(needle.position)   <span class="cmt"># feed 5/turn</span>
+    <span class="kw">else</span>:
+        collector.<span class="fn">move_to</span>(needle.position)
+<span class="kw">elif</span> nearest_node <span class="kw">is not</span> <span class="kw">None</span>:
+    <span class="kw">if</span> collector.position == nearest_node.position:
+        collector.<span class="fn">collect_from</span>(nearest_node.position)
+    <span class="kw">else</span>:
+        collector.<span class="fn">move_to</span>(nearest_node.position)
+</code></pre>
+
+<h3>NanoContainer — the tanker</h3>
+<p>
+  Three times a collector's hold (60 AZN) for 25 AZN, but no gun. It has the same
+  transfer rate (5/turn) and can even harvest nodes itself, slowly. Its real job is the
+  <strong>relay</strong>: on maps where the AZN is far from your needle, collectors fill
+  a container stationed mid-route (stand on its cell, <code>transfer_to</code> it), and
+  the container ferries 60 at a time to the needle — fewer long round-trips, more
+  harvesting time. See <code>strategies/example_container.py</code> for the full
+  two-stage pattern.
+</p>
+
+<h3>NanoNeedle — the score</h3>
+<p>
+  The only bot that scores. Build it <em>directly on</em> a Habitas Point (walk the AI
+  adjacent to the point and <code>build("NanoNeedle", point)</code>) — it can never move
+  again. Every turn it stands there you earn <strong>5 points</strong> if it is empty, or
+  <strong>20 + 2 × AZN stored</strong> once it holds anything, so feeding it is the whole
+  game: 40 AZN inside = 100 points <em>per turn</em>. Scores are recomputed from live
+  state — if the needle dies, that income vanishes the same turn and the point reopens
+  for either player. One needle per point: building onto an occupied point fails
+  (<code>habitas_occupied</code> — first claim holds). At 150 HP it survives ~50 turns of
+  focused fire, which is your window to react.
+</p>
+
+<h3>NanoIPCreator — the pipeline</h3>
+<p>
+  Walk it anywhere and call <code>open_ip()</code>: a <strong>permanent</strong> new 1×1
+  injection point appears at its position. Injection points are where collectors bank
+  (deposit into the build budget) — so a depot next to a rich AZN cluster turns a
+  20-turn haul home into a 2-turn hop. The depot outlives its creator (the bot
+  auto-destructs after 500 turns; the point stays). Its Scan 30 makes it a passable
+  scout while it walks. Calling <code>open_ip()</code> twice from the same cell is
+  harmless — one depot per spot.
+</p>
+<pre><code><span class="cmt"># One depot at the far AZN cluster, then bank there instead of walking home.</span>
+<span class="kw">if</span> ip_creator.position == depot_spot:
+    ip_creator.<span class="fn">open_ip</span>()
+<span class="kw">else</span>:
+    ip_creator.<span class="fn">move_to</span>(depot_spot)
+</code></pre>
+
+<h3>NanoBlocker — the roadblock</h3>
+<p>
+  Nothing but 90 HP and a rule: any <em>enemy</em> bot moving through its cell pays
+  <strong>+6 extra turns</strong>; white cells trying to step onto it are slowed too.
+  Friendly traffic is unaffected. Park it in a corridor mouth, a stream valve, or the
+  one gap in a bone wall, and <code>stop()</code>. Cheap (20 AZN), permanent, and it
+  stacks beautifully with terrain the enemy must funnel through — six extra turns under
+  your collector's guns is usually fatal.
+</p>
+
+<h3>NanoWall — the shield</h3>
+<p>
+  A 100-HP barrier that <strong>blocks enemy movement</strong> through its cell,
+  <strong>blocks every shot</strong> whose firing line crosses it (yours included — mind
+  your own collectors), and stops white cells. It crumbles after <strong>50 turns</strong>,
+  which makes standing fortifications a money pit (~0.5 AZN/turn upkeep per wall against
+  a typical economy of ~0.25/turn). The winning pattern is <em>reactive</em>: keep a
+  watchtower Explorer on the needle, and the turn a raider is spotted, have the NanoAI
+  drop a wall on the exact firing line — builds resolve <em>before</em> attacks, so the
+  wall beats the shot that same turn. <code>strategies/example_defense.py</code>
+  demonstrates the full pattern (it extended a lost siege from turn 630 to past 1050).
+</p>
+<pre><code><span class="cmt"># Reactive wall: the cell between the needle and the spotted raider.</span>
+threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.position)  <span class="cmt"># dict from visible_enemies</span>
+<span class="kw">if</span> threat <span class="kw">is not</span> <span class="kw">None</span> <span class="kw">and</span> map_info.azn_bank &gt;= <span class="num">25</span>:
+    tx, ty = threat[<span class="str">"position"</span>]
+    wx = needle.position[<span class="num">0</span>] + <span class="fn">sign</span>(tx - needle.position[<span class="num">0</span>])
+    wy = needle.position[<span class="num">1</span>] + <span class="fn">sign</span>(ty - needle.position[<span class="num">1</span>])
+    ai.<span class="fn">build</span>(<span class="str">"NanoWall"</span>, (wx, wy))   <span class="cmt"># lands before the enemy's shot resolves</span>
+</code></pre>
+
 <h2>Building rules</h2>
 <ul>
   <li>Only the <strong>NanoAI</strong> can build.</li>

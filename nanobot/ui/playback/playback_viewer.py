@@ -20,6 +20,7 @@ import time
 
 import pygame
 
+from nanobot.core import bot_type_registry as BotTypeRegistry
 from nanobot.core import user_prefs
 from nanobot.core.map_data import Density, MapData, StreamDir
 from nanobot.core.map_loader import load_from_file
@@ -1061,7 +1062,7 @@ class PlaybackViewer:
         # Rows are limited to what fits above the bottom-anchored Bot
         # Inspector: at small window heights the two used to overlap
         # (verified by screenshot at 1000x620).
-        inspector_top = self.screen_size[1] - 158
+        inspector_top = self._inspector_top()
         max_rows = max(0, (inspector_top - 8 - L["ticker_rows"]) // 15)
         if L["ticker_header"] + 14 > inspector_top:
             return
@@ -1076,14 +1077,40 @@ class PlaybackViewer:
             draw_text(surface, f"T{t}  {txt}", (x + 12, ty), size=10, color=(200, 203, 214))
             ty += 15
 
+    # Base inspector height, plus extra room for the one-sentence bot
+    # description that appears once a bot is selected. The extra is only
+    # claimed while something is selected, so the Events ticker above
+    # (which clips to _inspector_top) keeps its space the rest of the time.
+    INSPECTOR_BASE_H = 150
+    INSPECTOR_DESC_EXTRA = 42
+
+    def _inspector_top(self) -> int:
+        extra = self.INSPECTOR_DESC_EXTRA if self.selected_bot_id is not None else 0
+        return self.screen_size[1] - (self.INSPECTOR_BASE_H + extra) - 8
+
+    @staticmethod
+    def _wrap_text(text: str, font: "pygame.font.Font", max_w: int) -> list[str]:
+        lines, cur = [], ""
+        for word in text.split():
+            candidate = (cur + " " + word).strip()
+            if font.size(candidate)[0] <= max_w:
+                cur = candidate
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = word
+        if cur:
+            lines.append(cur)
+        return lines
+
     def _draw_inspector(self, surface: "pygame.Surface", frame: dict) -> None:
         # Always visible (placeholder text when nothing's selected) rather
         # than only appearing once a bot is clicked — matches the Godot
         # HUD's persistent "Bot Inspector" panel, and means a first-time
         # user can see right away that bots are clickable at all.
         x = self.screen_size[0] - SIDEBAR_WIDTH
-        y = self.screen_size[1] - 158
-        rect = pygame.Rect(x + 8, y, SIDEBAR_WIDTH - 16, 150)
+        y = self._inspector_top()
+        rect = pygame.Rect(x + 8, y, SIDEBAR_WIDTH - 16, self.screen_size[1] - 8 - y)
         pygame.draw.rect(surface, (45, 48, 58), rect, border_radius=4)
         pygame.draw.rect(surface, (90, 95, 110), rect, width=1, border_radius=4)
         draw_text(surface, "Bot Inspector", (rect.x + 8, rect.y + 6), size=12, color=(160, 165, 180))
@@ -1095,8 +1122,21 @@ class PlaybackViewer:
             draw_text(surface, "Click a bot on the map to inspect it.", (rect.x + 8, rect.y + 28), size=11, color=(150, 150, 150))
             return
 
+        ty = rect.y + 26
+        draw_text(surface, f"#{bot['id']} {bot['type']}", (rect.x + 8, ty), size=11)
+        ty += 16
+
+        # One-sentence what-does-this-do, from the same data file as the
+        # stats (data/bot_types.json) — a spectator shouldn't need the
+        # guide open to understand what the thing they clicked is for.
+        description = BotTypeRegistry.get_description(bot["type"])
+        font10 = get_font(10)
+        for line in self._wrap_text(description, font10, rect.width - 16)[:3]:
+            draw_text(surface, line, (rect.x + 8, ty), size=10, color=(185, 188, 200))
+            ty += 13
+        ty += 3
+
         lines = [
-            f"#{bot['id']} {bot['type']}",
             f"Owner: Player {bot['owner'] + 1}",
             f"HP: {bot['hp']}",
             f"AZN carried: {bot['azn']}",
@@ -1104,5 +1144,6 @@ class PlaybackViewer:
             f"Action: {bot['action']}",
             f"Alive: {bot['alive']}",
         ]
-        for i, line in enumerate(lines):
-            draw_text(surface, line, (rect.x + 8, rect.y + 28 + i * 15), size=11)
+        for line in lines:
+            draw_text(surface, line, (rect.x + 8, ty), size=11)
+            ty += 15

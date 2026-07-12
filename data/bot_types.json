@@ -8,7 +8,8 @@
 		"attack_range": 0,
 		"build_cost": 0,
 		"density_immune": false,
-		"stationary": false
+		"stationary": false,
+		"description": "Your commander: the only bot that can build others - protect it, because if it dies you can never build again."
 	},
 	"NanoExplorer": {
 		"hp": 20,
@@ -19,7 +20,8 @@
 		"attack_range": 0,
 		"build_cost": 15,
 		"density_immune": true,
-		"stationary": false
+		"stationary": false,
+		"description": "Fast scout that ignores tissue density; its Scan 30 is your team's eyesight under fog of war."
 	},
 	"NanoCollector": {
 		"hp": 50,
@@ -30,7 +32,8 @@
 		"attack_range": 12,
 		"build_cost": 20,
 		"density_immune": false,
-		"stationary": false
+		"stationary": false,
+		"description": "The worker: harvests AZN from nodes, delivers it to needles/containers/bank, and is the only bot that can shoot."
 	},
 	"NanoContainer": {
 		"hp": 60,
@@ -41,7 +44,8 @@
 		"attack_range": 0,
 		"build_cost": 25,
 		"density_immune": false,
-		"stationary": false
+		"stationary": false,
+		"description": "A mobile 60-AZN tank for hauling big loads across long supply lines (it can harvest too, slowly)."
 	},
 	"NanoNeedle": {
 		"hp": 150,
@@ -52,7 +56,8 @@
 		"attack_range": 0,
 		"build_cost": 40,
 		"density_immune": false,
-		"stationary": true
+		"stationary": true,
+		"description": "Plant it on a Habitas Point to score every turn - the more AZN fed into it, the more points; it can never move."
 	},
 	"NanoIPCreator": {
 		"hp": 20,
@@ -64,7 +69,8 @@
 		"build_cost": 30,
 		"density_immune": false,
 		"stationary": false,
-		"auto_destruct_turns": 500
+		"auto_destruct_turns": 500,
+		"description": "Opens a permanent new injection point (a banking depot) at its position, then expires after 500 turns."
 	},
 	"NanoBlocker": {
 		"hp": 90,
@@ -76,7 +82,8 @@
 		"build_cost": 20,
 		"density_immune": false,
 		"stationary": false,
-		"traversal_penalty": 6
+		"traversal_penalty": 6,
+		"description": "A living roadblock: enemies crossing its cell pay +6 extra turns, and white cells are slowed too."
 	},
 	"NanoWall": {
 		"hp": 100,
@@ -88,6 +95,7 @@
 		"build_cost": 25,
 		"density_immune": false,
 		"stationary": false,
-		"auto_destruct_turns": 50
+		"auto_destruct_turns": 50,
+		"description": "A temporary barrier that stops enemy movement and blocks all shots through its cell; crumbles after 50 turns."
 	}
 }

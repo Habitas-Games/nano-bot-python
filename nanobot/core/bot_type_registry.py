@@ -58,3 +58,10 @@ def is_valid_type(type_name: str) -> bool:
     if not _loaded:
         _load()
     return type_name in _data
+
+
+def get_description(type_name: str) -> str:
+    """One-sentence plain-language description of what a bot type does —
+    kept in data/bot_types.json next to the stats so the data file is
+    the single source of truth for everything the UI says about a bot."""
+    return str(get_type(type_name).get("description", ""))
