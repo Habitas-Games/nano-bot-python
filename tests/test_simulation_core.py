@@ -461,7 +461,7 @@ class TestNanoAIDeath:
         sim._check_nano_ai_deaths()
         # _call_strategies skips any player whose NanoAI is dead — verify
         # via the public effect: no exception, and nothing changes for them.
-        sim._call_strategies(1)  # must not raise even with strategies[0] is None
+        sim._call_strategies(1, [])  # must not raise even with strategies[0] is None
 
 
 class TestScoring:
@@ -1009,3 +1009,47 @@ class TestHazardMapRoundTrip:
         reloaded = map_loader.load_from_file(path)
         assert reloaded is not None
         assert reloaded.hazards == m.hazards
+
+
+class TestStrategyFailureEvents:
+    """A failing strategy must be visible in the replay, not only on the
+    console — the GUI's Events ticker reads these (v0.0.20)."""
+
+    class _Crasher:
+        def what_to_do_next(self, map_info, my_bots):
+            raise RuntimeError("bug in my code")
+
+    class _Sleeper:
+        def what_to_do_next(self, map_info, my_bots):
+            import time
+            time.sleep(0.06)  # over the 50 ms budget
+
+    def _run_one_strategy_turn(self, strategy):
+        sim = make_sim()
+        sim._strategies = [strategy, None]
+        sim._strategies_loaded = True
+        events = []
+        sim._call_strategies(1, events)
+        return events
+
+    def test_exception_emits_strategy_error_event(self, capsys):
+        events = self._run_one_strategy_turn(self._Crasher())
+        errs = [e for e in events if e["type"] == "strategy_error"]
+        assert len(errs) == 1
+        assert errs[0]["player"] == 0
+        assert "RuntimeError" in errs[0]["error"]
+        assert "bug in my code" in errs[0]["error"]
+
+    def test_timeout_emits_strategy_timeout_event(self, capsys):
+        events = self._run_one_strategy_turn(self._Sleeper())
+        touts = [e for e in events if e["type"] == "strategy_timeout"]
+        assert len(touts) == 1
+        assert touts[0]["player"] == 0
+        assert touts[0]["ms"] > 50
+
+    def test_healthy_strategy_emits_nothing(self):
+        class Fine:
+            def what_to_do_next(self, map_info, my_bots):
+                pass
+        events = self._run_one_strategy_turn(Fine())
+        assert events == []

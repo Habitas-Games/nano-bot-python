@@ -39,10 +39,12 @@ SIDEBAR_WIDTH = 260
 TOP_ROW_HEIGHT = 50
 SETUP_ROW_HEIGHT = 40
 CONTROL_BAR_HEIGHT = TOP_ROW_HEIGHT + SETUP_ROW_HEIGHT
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
-STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategies")
-MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
-REPLAYS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "replays")
+# normpath: these paths end up in user_prefs, picker lists, and equality
+# checks — "a/b/../c" and "a/c" must not count as different files.
+ASSETS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets"))
+STRATEGIES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategies"))
+MAPS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps"))
+REPLAYS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "replays"))
 
 # Fallback flat colors, used only if a texture file is missing — the real
 # rendering uses the same tile/marker textures as the map editor and the
@@ -62,7 +64,7 @@ PLAYER_COLORS = [(64, 140, 255), (255, 77, 64), (60, 220, 110), (255, 215, 40)]
 # 16x brings "skim the whole match" down to ~12s.
 SPEEDS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
 MIN_ZOOM, MAX_ZOOM = 0.5, 6.0
-KEY_HINT = "Space play  |  Left/Right step  |  Home/End ends  |  wheel zoom  |  drag pan  |  F fit"
+KEY_HINT = "Space play | Left/Right step | Home/End ends | wheel zoom | drag pan | F fit | C follow bot"
 # How far the owned-habitas tint is lerped from the player's base color
 # toward white — matches map_renderer.gd's OWNED_BLEND exactly (0.30: mostly
 # the player's own color, lightly whitened so the art's shading still reads).
@@ -166,6 +168,8 @@ class PlaybackViewer:
 
         self.log: MatchLog | None = None
         self.map: MapData | None = None
+        self.missing_map_name: str | None = None
+        self.follow_selected = False
         self.current_frame = 0
         if replay_path is not None:
             self._load_replay(replay_path)
@@ -202,9 +206,16 @@ class PlaybackViewer:
     def _load_replay(self, replay_path: str) -> None:
         self.log = MatchLog.load_from_file(replay_path)
         self.map = None
+        self.missing_map_name: str | None = None
         if self.log is not None:
             map_path = self._resolve_map_path(self.log.map_name)
             self.map = load_from_file(map_path) if map_path else None
+            if self.map is None:
+                # Deleted/renamed since the replay was recorded. The old
+                # behavior rendered the match on a silent blank grid —
+                # bots floating in featureless tissue with no explanation
+                # (and no bone/streams, so the moves looked nonsensical).
+                self.missing_map_name = self.log.map_name or "(unnamed)"
         if self.map is None:
             self.map = MapData(40, 40)  # fallback blank map so the viewer doesn't crash
         self.current_frame = 0
@@ -269,7 +280,11 @@ class PlaybackViewer:
                     self._bot_meta[b["id"]] = (b["owner"], b["type"])
             for e in f.get("events", []):
                 text = self._event_text(e)
-                if text:
+                if text and not (self._timeline and self._timeline[-1][1] == text):
+                    # Collapse consecutive identical lines: a strategy
+                    # crashing every one of 1500 turns is one story beat,
+                    # not 1500 — without this the ticker is only ever
+                    # five copies of the same sentence.
                     self._timeline.append((f["turn"], text))
 
     def _event_text(self, e: dict) -> str | None:
@@ -290,10 +305,14 @@ class PlaybackViewer:
             return "White cell destroyed"
         if t == "injection_point_created":
             return f"P{e['player'] + 1} opened injection point"
+        if t == "strategy_error":
+            return f"P{e['player'] + 1} strategy crashed: {e.get('error', '?')} — turn forfeited"
+        if t == "strategy_timeout":
+            return f"P{e['player'] + 1} strategy over {e.get('ms', '?')} ms budget — turn forfeited"
         return None
 
     def _resolve_map_path(self, map_name: str) -> str | None:
-        maps_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
+        maps_dir = MAPS_DIR
         for fname in sorted(os.listdir(maps_dir)) if os.path.exists(maps_dir) else []:
             if not fname.endswith(".json"):
                 continue
@@ -412,9 +431,19 @@ class PlaybackViewer:
         if not files:
             self.match_message = "No replays found in replays/"
             return
-        files = files[:14]
+        # Every replay, scrollable — the old newest-14 cap made anything
+        # older unreachable in-app. The [x] deletes the file (replays are
+        # regenerable match logs, not user documents).
         labels = [f"{os.path.basename(f)}   ({self._age_label(os.path.getmtime(f))})" for f in files]
-        self.picker.open("Open replay (newest first)", files, self._load_picked_replay, labels=labels)
+        self.picker.open(f"Open replay ({len(files)}, newest first)", files,
+                          self._load_picked_replay, labels=labels, on_delete=self._delete_replay)
+
+    def _delete_replay(self, path: str) -> None:
+        try:
+            os.remove(path)
+            self.match_message = f"Deleted {os.path.basename(path)}"
+        except OSError as e:
+            self.match_message = f"Could not delete {os.path.basename(path)}: {e}"
 
     @staticmethod
     def _age_label(mtime: float) -> str:
@@ -519,6 +548,17 @@ class PlaybackViewer:
         layout["ticker_rows"] = y
         self._hud_layout = layout
 
+    def _jump_to_turn(self, turn: int) -> None:
+        """Jump to the frame recording this turn number (frames are 1
+        per turn, but index != turn — find it rather than assume)."""
+        if self.log is None or not self.log.frames:
+            return
+        for i, f in enumerate(self.log.frames):
+            if f["turn"] >= turn:
+                self._jump_to(i)
+                return
+        self._jump_to(len(self.log.frames) - 1)
+
     def _jump_to(self, frame_index: int) -> None:
         # Matches playback_scene.gd's jump_to: relocate and reset the
         # per-frame accumulator, but don't touch self.playing — scrubbing
@@ -588,6 +628,13 @@ class PlaybackViewer:
             if btn.handle_event(event):
                 return
 
+        # Ticker rows are clickable: jump straight to that event's turn.
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, turn in getattr(self, "_ticker_rects", []):
+                if rect.collidepoint(event.pos):
+                    self._jump_to_turn(turn)
+                    return
+
         if event.type == pygame.MOUSEWHEEL:
             mx, my = pygame.mouse.get_pos()
             if self.canvas_rect.collidepoint((mx, my)):
@@ -625,11 +672,13 @@ class PlaybackViewer:
             return
         if event.type == pygame.MOUSEMOTION and event.buttons[0] and self._left_down_pos is not None:
             self._left_dragged = True
+            self.follow_selected = False  # manual pan takes the camera back
             self.scroll_x -= event.rel[0]
             self.scroll_y -= event.rel[1]
             self._clamp_scroll()
             return
         if event.type == pygame.MOUSEMOTION and event.buttons[1]:
+            self.follow_selected = False
             self.scroll_x -= event.rel[0]
             self.scroll_y -= event.rel[1]
             self._clamp_scroll()
@@ -647,7 +696,10 @@ class PlaybackViewer:
             elif event.key == pygame.K_END and self.log and self.log.frames:
                 self._jump_to(len(self.log.frames) - 1)
             elif event.key == pygame.K_f:
+                self.follow_selected = False
                 self._fit_view()
+            elif event.key == pygame.K_c and self.selected_bot_id is not None:
+                self.follow_selected = not self.follow_selected
 
     def _handle_canvas_click(self, screen_pos: tuple[int, int]) -> None:
         if self.log is None or not self.log.frames:
@@ -715,6 +767,15 @@ class PlaybackViewer:
 
         frame = self.log.frames[self.current_frame]
 
+        # Follow camera (C): keep the selected bot centered as it moves.
+        if self.follow_selected and self.selected_bot_id is not None:
+            target = next((b for b in frame["bots"] if b["id"] == self.selected_bot_id), None)
+            if target is not None:
+                size = CELL_SIZE * self.zoom
+                self.scroll_x = int((target["pos"][0] + 0.5) * size - self.canvas_rect.width / 2)
+                self.scroll_y = int((target["pos"][1] + 0.5) * size - self.canvas_rect.height / 2)
+                self._clamp_scroll()
+
         prev_clip = surface.get_clip()
         surface.set_clip(self.canvas_rect)
         self._draw_map(surface)
@@ -731,10 +792,23 @@ class PlaybackViewer:
         self._draw_hud(surface, frame)
         self._draw_inspector(surface, frame)
         self._draw_status_strip(surface)
+        self._draw_map_missing_banner(surface)
         draw_hover_tooltips(surface, [b for b in self.controls if isinstance(b, Button)])
 
         self.picker.draw(surface, self.screen_size)
         self.browser.draw(surface, self.screen_size)
+
+    def _draw_map_missing_banner(self, surface: "pygame.Surface") -> None:
+        if not self.missing_map_name:
+            return
+        y = CONTROL_BAR_HEIGHT + (24 if (self.running_match or self.match_message) else 0)
+        strip = pygame.Rect(0, y, max(self.canvas_rect.width, 320), 24)
+        overlay = pygame.Surface(strip.size, pygame.SRCALPHA)
+        overlay.fill((60, 22, 16, 235))
+        surface.blit(overlay, strip.topleft)
+        draw_text(surface, f"Map \"{self.missing_map_name}\" not found in maps/ — showing blank terrain "
+                           f"(bots/objectives are real, walls and streams are not)",
+                  (12, strip.y + 5), size=12, color=(240, 180, 150))
 
     def _draw_status_strip(self, surface: "pygame.Surface") -> None:
         """Match status (running spinner / last result) on its own
@@ -1026,7 +1100,11 @@ class PlaybackViewer:
         pygame.draw.line(surface, (12, 12, 16), (x, CONTROL_BAR_HEIGHT), (x, self.screen_size[1]), 2)
 
         L = self._hud_layout
-        draw_text(surface, f"Map: {self.log.map_name}", (x + 12, L["map_info"]), size=12, color=(160, 165, 180))
+        map_label = f"Map: {self.log.map_name}"
+        if self.missing_map_name:
+            map_label += "  (file missing!)"
+        draw_text(surface, map_label, (x + 12, L["map_info"]), size=12,
+                  color=(230, 150, 110) if self.missing_map_name else (160, 165, 180))
         draw_text(surface, f"Turn {frame['turn']} / {self.log.total_turns}", (x + 12, L["turn"]), size=15, color=(235, 235, 235))
 
         self.turn_slider.draw(surface)
@@ -1064,17 +1142,33 @@ class PlaybackViewer:
         # (verified by screenshot at 1000x620).
         inspector_top = self._inspector_top()
         max_rows = max(0, (inspector_top - 8 - L["ticker_rows"]) // 15)
+        self._ticker_rects = []  # reset first: stale rects = ghost click targets
         if L["ticker_header"] + 14 > inspector_top:
             return
-        draw_text(surface, "Events", (x + 12, L["ticker_header"]), size=12, color=(160, 165, 180))
+        draw_text(surface, "Events (click to jump)", (x + 12, L["ticker_header"]), size=12, color=(160, 165, 180))
         if max_rows == 0:
             return
         recent = [(t, txt) for t, txt in self._timeline if t <= frame["turn"]][-min(5, max_rows):]
         ty = L["ticker_rows"]
         if not recent:
             draw_text(surface, "Nothing yet.", (x + 12, ty), size=10, color=(120, 124, 138))
+        font10 = get_font(10)
+        max_w = SIDEBAR_WIDTH - 24
+        mouse = pygame.mouse.get_pos()
         for t, txt in recent:
-            draw_text(surface, f"T{t}  {txt}", (x + 12, ty), size=10, color=(200, 203, 214))
+            line = f"T{t}  {txt}"
+            while line and font10.size(line + "...")[0] > max_w and len(line) > 8:
+                line = line[:-1]
+            if line != f"T{t}  {txt}":
+                line += "..."
+            row = pygame.Rect(x + 10, ty - 1, SIDEBAR_WIDTH - 20, 14)
+            hovered = row.collidepoint(mouse)
+            if hovered:
+                pygame.draw.rect(surface, (48, 52, 64), row, border_radius=2)
+            failure = "crashed" in txt or "budget" in txt
+            draw_text(surface, line, (x + 12, ty), size=10,
+                      color=(240, 160, 130) if failure else ((225, 228, 240) if hovered else (200, 203, 214)))
+            self._ticker_rects.append((row, t))
             ty += 15
 
     # Base inspector height, plus extra room for the one-sentence bot

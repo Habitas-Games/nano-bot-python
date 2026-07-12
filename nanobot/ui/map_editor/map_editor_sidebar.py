@@ -30,6 +30,7 @@ class MapEditorSidebar:
         self.on_save = None
         self.on_clear = None
         self.on_undo = None
+        self.on_redo = None
         self.on_azn_delta = None     # callback(int) — +/- step for starting AZN
 
         self._starting_azn_display = 150
@@ -196,10 +197,13 @@ class MapEditorSidebar:
         # History
         self._headers.append(("History", y))
         y += 18
-        self.undo_btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), "Undo",
+        self.undo_btn = Button((x, y, half, ROW_HEIGHT), "Undo",
                                 on_click=lambda: self._fire("on_undo"), tooltip="Ctrl+Z")
         self.undo_btn.enabled = False
-        self._action_buttons.append(self.undo_btn)
+        self.redo_btn = Button((x + half + 8, y, half, ROW_HEIGHT), "Redo",
+                                on_click=lambda: self._fire("on_redo"), tooltip="Ctrl+Y / Ctrl+Shift+Z")
+        self.redo_btn.enabled = False
+        self._action_buttons.extend([self.undo_btn, self.redo_btn])
 
     def _select_density(self, d: Density) -> None:
         if self.on_density:
@@ -239,6 +243,10 @@ class MapEditorSidebar:
     def set_undo_enabled(self, enabled: bool) -> None:
         if self.undo_btn:
             self.undo_btn.enabled = enabled
+
+    def set_redo_enabled(self, enabled: bool) -> None:
+        if self.redo_btn:
+            self.redo_btn.enabled = enabled
 
     def handle_event(self, event: "pygame.event.Event") -> bool:
         if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):

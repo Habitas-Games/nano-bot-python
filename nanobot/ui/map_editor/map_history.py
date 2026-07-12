@@ -17,14 +17,21 @@ class MapHistory:
     def __init__(self):
         self._history: list[dict] = []
         self._index = -1
+        # Redo stack: because save_state() snapshots *pre*-mutation state,
+        # the post-edit state exists nowhere in _history — undo() captures
+        # it here at the moment of undoing, which is the only time it is
+        # both current and about to be lost.
+        self._redo: list[dict] = []
 
     def reset(self) -> None:
         self._history.clear()
         self._index = -1
+        self._redo.clear()
 
     def save_state(self, m: MapData) -> None:
         if self._index < len(self._history) - 1:
             del self._history[self._index + 1:]
+        self._redo.clear()  # a fresh edit invalidates the redo branch
 
         self._history.append(ops.snapshot(m))
         self._index = len(self._history) - 1
@@ -35,6 +42,19 @@ class MapHistory:
 
     def can_undo(self) -> bool:
         return self._index > 0
+
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def redo(self, m: MapData) -> None:
+        """Restore the state captured by the matching undo(). The index
+        moves forward in lockstep so position-based dirty tracking and a
+        subsequent undo both stay consistent (_history[_index] is again
+        exactly 'the state right before the redone edit')."""
+        if not self._redo:
+            return
+        ops.restore(m, self._redo.pop())
+        self._index += 1
 
     @property
     def position(self) -> int:
@@ -60,5 +80,6 @@ class MapHistory:
         """
         if not self.can_undo():
             return
+        self._redo.append(ops.snapshot(m))
         ops.restore(m, self._history[self._index])
         self._index -= 1

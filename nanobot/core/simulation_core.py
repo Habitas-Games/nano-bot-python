@@ -142,7 +142,7 @@ class SimulationCore:
             self._decrement_timers()
             self._advance_movement(events)
             self._advance_hazards(events)
-            self._call_strategies(turn)
+            self._call_strategies(turn, events)
             self._apply_action_queues(events)
             self._resolve_attacks(events)
             self._tick_auto_destruct(events)
@@ -296,7 +296,7 @@ class SimulationCore:
             bot.position = next_cell
             bot.turns_until_move = cost
 
-    def _call_strategies(self, turn: int) -> None:
+    def _call_strategies(self, turn: int, events: list[dict]) -> None:
         for player_id in range(self._player_count):
             if not self._nano_ai_alive.get(player_id, False):
                 continue
@@ -309,11 +309,20 @@ class SimulationCore:
             try:
                 strategy.what_to_do_next(map_info, proxies)
             except Exception as e:
+                # Into the replay, not just the console: a crashing
+                # strategy used to be completely invisible in the GUI —
+                # its bots simply froze with no explanation (confirmed:
+                # 1500 console warnings, zero on-screen signals). The
+                # viewer's ticker narrates these events.
                 print(f"Player {player_id}: strategy raised an exception — turn forfeited: {e}")
+                events.append({"type": "strategy_error", "player": player_id,
+                                "error": f"{type(e).__name__}: {e}"[:100]})
                 continue
             elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             if elapsed_ms > STRATEGY_TIMEOUT_MS:
                 print(f"Player {player_id}: strategy exceeded {STRATEGY_TIMEOUT_MS} ms — turn forfeited")
+                events.append({"type": "strategy_timeout", "player": player_id,
+                                "ms": round(elapsed_ms, 1)})
                 continue
             self._flush_proxies(proxies)
 

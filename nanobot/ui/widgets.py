@@ -207,24 +207,34 @@ class FilePickerModal:
         self._files: list[str] = []
         self._labels: list[str] = []
         self._on_select: Callable[[str], None] | None = None
+        self._on_delete: Callable[[str], None] | None = None
         self._box_rect = pygame.Rect(0, 0, 0, 0)
-        self._file_rects: list[pygame.Rect] = []
+        self._file_rects: list[tuple[pygame.Rect, int]] = []  # (rect, files-index)
+        self._delete_rects: list[tuple[pygame.Rect, int]] = []
+        self._scroll = 0
 
     @property
     def is_open(self) -> bool:
         return self._on_select is not None
 
     def open(self, title: str, files: list[str], on_select: Callable[[str], None],
-             labels: list[str] | None = None) -> None:
+             labels: list[str] | None = None,
+             on_delete: "Callable[[str], None] | None" = None) -> None:
         """`labels`, if given, is what each row displays (e.g. a filename
-        plus its age for replays); selection still returns the file path."""
+        plus its age for replays); selection still returns the file path.
+        `on_delete`, if given, puts an [x] on each row — clicking it calls
+        the callback and removes the row, keeping the modal open (used by
+        the replay browser to clean up old replays)."""
         self._title = title
-        self._files = files
+        self._files = list(files)
         self._labels = labels if labels is not None else [_basename(p) for p in files]
         self._on_select = on_select
+        self._on_delete = on_delete
+        self._scroll = 0
 
     def close(self) -> None:
         self._on_select = None
+        self._on_delete = None
 
     def handle_event(self, event: "pygame.event.Event") -> bool:
         """Returns True if the event was consumed (always True while open,
@@ -234,8 +244,20 @@ class FilePickerModal:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.close()
             return True
+        if event.type == pygame.MOUSEWHEEL:
+            self._scroll = max(0, self._scroll - event.y * 2)
+            return True
         if event.type == pygame.MOUSEBUTTONDOWN:
-            for i, rect in enumerate(self._file_rects):
+            for rect, i in self._delete_rects:
+                if rect.collidepoint(event.pos):
+                    path = self._files.pop(i)
+                    self._labels.pop(i)
+                    if self._on_delete:
+                        self._on_delete(path)
+                    if not self._files:
+                        self.close()
+                    return True
+            for rect, i in self._file_rects:
                 if rect.collidepoint(event.pos):
                     path = self._files[i]
                     on_select = self._on_select
@@ -255,8 +277,13 @@ class FilePickerModal:
         surface.blit(overlay, (0, 0))
 
         font = get_font(12)
-        box_w = max(360, max((font.size(lbl)[0] for lbl in self._labels), default=0) + 44)
-        box_h = 56 + 28 * len(self._files)
+        extra = 30 if self._on_delete else 0
+        box_w = max(360, max((font.size(lbl)[0] for lbl in self._labels), default=0) + 44 + extra)
+        visible = max(1, min(len(self._files), (screen_size[1] - 140) // 28))
+        max_scroll = max(0, len(self._files) - visible)
+        self._scroll = min(self._scroll, max_scroll)
+        footer = 22 if max_scroll > 0 else 0
+        box_h = 56 + 28 * visible + footer
         box_x = (screen_size[0] - box_w) // 2
         box_y = (screen_size[1] - box_h) // 2
         self._box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
@@ -264,14 +291,35 @@ class FilePickerModal:
         pygame.draw.rect(surface, (90, 95, 110), self._box_rect, width=2, border_radius=6)
 
         draw_text(surface, self._title, (box_x + 16, box_y + 14), size=14)
-        rects = []
-        for i, label in enumerate(self._labels):
-            r = pygame.Rect(box_x + 12, box_y + 44 + i * 28, box_w - 24, 24)
-            hovered = r.collidepoint(pygame.mouse.get_pos())
+        mouse = pygame.mouse.get_pos()
+        rects, del_rects = [], []
+        for row, i in enumerate(range(self._scroll, min(len(self._files), self._scroll + visible))):
+            r = pygame.Rect(box_x + 12, box_y + 44 + row * 28, box_w - 24 - extra, 24)
+            hovered = r.collidepoint(mouse)
             pygame.draw.rect(surface, (60, 64, 78) if hovered else (38, 40, 50), r, border_radius=3)
-            draw_text(surface, label, (r.x + 8, r.y + 4), size=12)
-            rects.append(r)
+            draw_text(surface, self._labels[i], (r.x + 8, r.y + 4), size=12)
+            rects.append((r, i))
+            if self._on_delete:
+                xr = pygame.Rect(r.right + 6, r.y + 3, 18, 18)
+                xh = xr.collidepoint(mouse)
+                pygame.draw.rect(surface, (95, 52, 52) if xh else (58, 44, 48), xr, border_radius=3)
+                xl = get_font(11).render("x", True, (235, 185, 185))
+                surface.blit(xl, xl.get_rect(center=xr.center))
+                del_rects.append((xr, i))
         self._file_rects = rects
+        self._delete_rects = del_rects
+        if max_scroll > 0:
+            draw_text(surface, f"{self._scroll + 1}-{self._scroll + visible} of {len(self._files)}  (scroll)",
+                      (box_x + 16, box_y + box_h - 20), size=10, color=(140, 144, 158))
+            self._draw_scrollbar(surface, box_x + box_w - 8, box_y + 44, 28 * visible,
+                                 self._scroll, visible, len(self._files))
+
+    @staticmethod
+    def _draw_scrollbar(surface, x: int, y: int, height: int, scroll: int, visible: int, total: int) -> None:
+        pygame.draw.rect(surface, (30, 32, 40), (x, y, 4, height), border_radius=2)
+        thumb_h = max(18, int(height * visible / total))
+        thumb_y = y + int((height - thumb_h) * (scroll / max(1, total - visible)))
+        pygame.draw.rect(surface, (110, 116, 134), (x, thumb_y, 4, thumb_h), border_radius=2)
 
 
 def _basename(path: str) -> str:
@@ -321,6 +369,7 @@ class FileBrowserModal:
         self._multi = multi
         self._selected = set()
         self._scroll = 0
+        self._filter = ""
 
     def close(self) -> None:
         self._on_select = None
@@ -336,14 +385,19 @@ class FileBrowserModal:
             names = sorted(os.listdir(self._dir), key=str.lower)
         except OSError:
             names = []
+        needle = self._filter.lower()
         for name in names:
             if name.startswith(".") or name == "__pycache__":
+                continue
+            if needle and needle not in name.lower():
                 continue
             full = os.path.join(self._dir, name)
             if os.path.isdir(full):
                 entries.append((full, True))
         for name in names:
             if name.startswith("."):
+                continue
+            if needle and needle not in name.lower():
                 continue
             full = os.path.join(self._dir, name)
             if os.path.isfile(full) and name.lower().endswith(self._extensions):
@@ -361,9 +415,20 @@ class FileBrowserModal:
             return False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                self.close()
+                # First Esc clears an active filter; second closes.
+                if self._filter:
+                    self._filter = ""
+                else:
+                    self.close()
             elif event.key == pygame.K_RETURN and self._multi and self._selected:
                 self._finish(sorted(self._selected))
+            elif event.key == pygame.K_BACKSPACE:
+                self._filter = self._filter[:-1]
+                self._scroll = 0
+            elif event.unicode and event.unicode.isprintable() and len(self._filter) < 30:
+                # Type-to-filter: narrows the listing by substring.
+                self._filter += event.unicode
+                self._scroll = 0
             return True
         if event.type == pygame.MOUSEWHEEL:
             self._scroll = max(0, self._scroll - event.y * 2)
@@ -381,6 +446,7 @@ class FileBrowserModal:
                     if is_dir:
                         self._dir = path
                         self._scroll = 0
+                        self._filter = ""
                     elif self._multi:
                         self._selected.symmetric_difference_update({path})
                     else:
@@ -416,8 +482,16 @@ class FileBrowserModal:
 
         draw_text(surface, self._title, (box_x + 16, box_y + 12), size=14)
         font12 = get_font(12)
-        draw_text(surface, self._shorten(self._dir, box_w - 32, font12),
-                  (box_x + 16, box_y + 34), size=12, color=(150, 155, 168))
+        path_label = self._shorten(self._dir, box_w - 32 - (150 if self._filter else 0), font12)
+        draw_text(surface, path_label, (box_x + 16, box_y + 34), size=12, color=(150, 155, 168))
+        if self._filter:
+            flt = f"filter: {self._filter}  (Esc clears)"
+            fw = font12.size(flt)[0]
+            draw_text(surface, flt, (box_x + box_w - 16 - fw, box_y + 34), size=12, color=(200, 190, 120))
+        else:
+            hint = "type to filter"
+            hw = get_font(10).size(hint)[0]
+            draw_text(surface, hint, (box_x + box_w - 16 - hw, box_y + 36), size=10, color=(110, 114, 128))
 
         list_top = box_y + 56
         footer_h = 44
@@ -453,6 +527,8 @@ class FileBrowserModal:
         if max_scroll > 0:
             draw_text(surface, f"{self._scroll + 1}-{min(len(entries), self._scroll + visible)} of {len(entries)} (scroll)",
                       (box_x + 16, box_y + box_h - footer_h + 16), size=10, color=(120, 124, 138))
+            FilePickerModal._draw_scrollbar(surface, box_x + box_w - 10, list_top,
+                                            visible * self.ROW_H, self._scroll, visible, len(entries))
 
         self._confirm_rect = None
         if self._multi:

@@ -299,14 +299,19 @@
     <strong>Iterate.</strong> The match opens fitted to the window and already
     playing. Scrub with the turn slider, or use the keyboard:
     <em>Space</em> play/pause, <em>←/→</em> step (hold to keep stepping),
-    <em>Home/End</em> jump to either end, <em>F</em> re-fit the whole map.
+    <em>Home/End</em> jump to either end, <em>F</em> re-fit the whole map,
+    <em>C</em> follow the selected bot.
     The scroll-wheel zooms toward the cursor (up to 16× playback speed is
     available for skimming a full match); pan with <em>left-drag</em> or
     middle-drag, and <em>click</em> a bot (without dragging) to inspect it.
+    If your strategy <strong>crashes or blows the 50 ms budget</strong>, the
+    <em>Events</em> panel says so, with the exception type — and every Events
+    row is clickable to jump straight to that turn.
     Every Restart rolls a new random seed — <em>lock the seed</em> (the "Seed"
     button) to rerun the exact same match while debugging. Replays remember
-    their seed, so <em>Replays…</em> can reopen any saved match, tournament
-    games included, and rerun it exactly.
+    their seed, so <em>Replays…</em> (all saved matches, scrollable, with a
+    per-row [x] to clean up) can reopen any saved match, tournament games
+    included, and rerun it exactly.
   </p>
 </div>
 
@@ -1020,6 +1025,7 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
   <li>Your <code>what_to_do_next()</code> must return within <strong>50 ms</strong>. Avoid expensive loops over the full map every turn — cache what you can across turns using instance attributes on your strategy object.</li>
   <li>Pathfinding is done by the engine (A*) — calling <code>move_to()</code> is not something you should run on every bot every turn if you can avoid it, especially on a large map.</li>
   <li>An exception raised inside either of your methods forfeits that turn (or falls back to the default spawn point for <code>choose_injection_point</code>) rather than crashing the match — but it's still a wasted turn, so wrap risky logic in your own <code>try/except</code> if you want to recover within the same turn.</li>
+  <li>Both failure kinds are <strong>visible in the match window</strong>: the Events panel shows "strategy crashed: &lt;exception&gt;" or "strategy over 50 ms budget" the turn it happens (click the row to jump there). If your bots ever freeze mysteriously, check Events first.</li>
 </ul>
 
 <div class="callout info">
@@ -1053,7 +1059,7 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
     <tr><td class="mono">AZN</td><td>Click to place a resource node (default 30). Switch to <em>Edit</em>, click the node, press Enter to type a custom quantity.</td></tr>
     <tr><td class="mono">Zone</td><td>Drag a rectangle for an injection zone. The <em>Zone Owner</em> toggle (P1/P2) sets whose it is — a playable map needs one per player, usually in opposite corners.</td></tr>
     <tr><td class="mono">White Cell</td><td>Click passable cells to lay a patrol route (numbered as you go), <em>right-click or Enter</em> to finish it — one waypoint makes a stationary guard, more make a loop. Keys 1/2/3 set its speed (a step every 1/2/3 turns). Right-click an existing patrol's waypoint to delete it. Backspace removes the last pending point.</td></tr>
-    <tr><td class="mono">Pan / Edit / Delete</td><td>Move around (middle-drag pans from any tool); select-and-drag elements or resize zones by their corners; erase terrain and elements. Ctrl+Z undoes, Ctrl+S saves.</td></tr>
+    <tr><td class="mono">Pan / Edit / Delete</td><td>Move around (middle-drag pans from any tool); select-and-drag elements or resize zones by their corners; erase terrain and elements. Ctrl+Z undoes, Ctrl+Y (or Ctrl+Shift+Z) redoes, Ctrl+S saves.</td></tr>
   </tbody>
 </table>
 

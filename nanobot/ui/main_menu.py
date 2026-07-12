@@ -11,12 +11,15 @@ window, seeded from the last session's choices via user_prefs."""
 from __future__ import annotations
 
 import os
+import webbrowser
 
 import pygame
 
-from nanobot.ui.widgets import Button, draw_text
+from nanobot.ui.widgets import Button, draw_hover_tooltips, draw_text
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets")
+GUIDE_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..",
+                                            "docs", "participant_guide.html"))
 
 
 def _load_image(rel_path: str) -> "pygame.Surface | None":
@@ -54,8 +57,8 @@ class MainMenu:
         # of the screen; buttons go below it rather than on top of it —
         # but never past the bottom edge (at 600px tall, a plain 0.66*h
         # start put Quit half off-screen, verified by screenshot).
-        stack_h = 4 * h + 3 * gap
-        y = min(int(self.screen_size[1] * 0.66), self.screen_size[1] - stack_h - 16)
+        stack_h = 5 * h + 4 * gap
+        y = min(int(self.screen_size[1] * 0.62), self.screen_size[1] - stack_h - 16)
 
         self.btn_run = Button((cx - w // 2, y, w, h), "Run Match", on_click=self._open_match_window)
         y += h + gap
@@ -63,9 +66,12 @@ class MainMenu:
         y += h + gap
         self.btn_tournament = Button((cx - w // 2, y, w, h), "Tournament", on_click=self._open_tournament)
         y += h + gap
+        self.btn_guide = Button((cx - w // 2, y, w, h), "Guide", on_click=self._open_guide,
+                                tooltip="Opens the participant guide in your browser")
+        y += h + gap
         self.btn_quit = Button((cx - w // 2, y, w, h), "Quit", on_click=self._quit)
 
-        self.buttons = [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_quit]
+        self.buttons = [self.btn_run, self.btn_editor, self.btn_tournament, self.btn_guide, self.btn_quit]
 
     def handle_event(self, event: "pygame.event.Event") -> None:
         for btn in self.buttons:
@@ -94,6 +100,7 @@ class MainMenu:
 
         for btn in self.buttons:
             btn.draw(surface)
+        draw_hover_tooltips(surface, self.buttons)
 
     # --- actions ---
 
@@ -108,6 +115,14 @@ class MainMenu:
     def _open_tournament(self) -> None:
         if self.on_open_tournament:
             self.on_open_tournament()
+
+    def _open_guide(self) -> None:
+        # The guide was only reachable by browsing the repo on disk —
+        # the app itself never mentioned it existed.
+        try:
+            webbrowser.open("file://" + GUIDE_PATH)
+        except Exception as e:
+            print(f"Could not open guide: {e}")
 
     def _quit(self) -> None:
         if self.on_quit:

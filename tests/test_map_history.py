@@ -120,3 +120,56 @@ class TestMapHistory:
         for i in range(map_history_module.MAX_HISTORY + 20):
             edit(h, m, lambda m, i=i: ops.paint_cell(m, 0, 0, Density.LOW if i % 2 == 0 else Density.HIGH))
         assert len(h._history) <= map_history_module.MAX_HISTORY
+
+
+class TestRedo:
+    def test_redo_restores_the_undone_edit(self):
+        m = ops.init_blank(5, 5)
+        h = MapHistory()
+        h.save_state(m)                     # load baseline
+        h.save_state(m)                     # pre-edit snapshot
+        ops.paint_cell(m, 2, 2, Density.BONE)
+        h.undo(m)
+        assert m.get_cell(2, 2)["density"] != Density.BONE
+        assert h.can_redo()
+        h.redo(m)
+        assert m.get_cell(2, 2)["density"] == Density.BONE
+        assert not h.can_redo()
+
+    def test_undo_after_redo_works_again(self):
+        m = ops.init_blank(5, 5)
+        h = MapHistory()
+        h.save_state(m)
+        h.save_state(m)
+        ops.paint_cell(m, 1, 1, Density.HIGH)
+        h.undo(m)
+        h.redo(m)
+        h.undo(m)
+        assert m.get_cell(1, 1)["density"] == Density.LOW
+
+    def test_new_edit_clears_the_redo_branch(self):
+        m = ops.init_blank(5, 5)
+        h = MapHistory()
+        h.save_state(m)
+        h.save_state(m)
+        ops.paint_cell(m, 1, 1, Density.HIGH)
+        h.undo(m)
+        h.save_state(m)                     # a different new edit
+        ops.paint_cell(m, 3, 3, Density.MEDIUM)
+        assert not h.can_redo()
+
+    def test_position_tracks_through_undo_redo(self):
+        # The editor's dirty flag compares history.position against the
+        # position recorded at save/load — redo must move it forward in
+        # lockstep or "clean" detection breaks.
+        m = ops.init_blank(5, 5)
+        h = MapHistory()
+        h.save_state(m)
+        clean_pos = h.position
+        h.save_state(m)
+        ops.paint_cell(m, 1, 1, Density.HIGH)
+        edited_pos = h.position
+        h.undo(m)
+        assert h.position == clean_pos
+        h.redo(m)
+        assert h.position == edited_pos

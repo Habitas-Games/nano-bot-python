@@ -19,8 +19,8 @@ from nanobot.tournament.leaderboard import Leaderboard
 from nanobot.tournament.tournament_runner import TournamentRunner
 from nanobot.ui.widgets import Button, FileBrowserModal, draw_text, get_font
 
-STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategies")
-MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps")
+STRATEGIES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategies"))
+MAPS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "maps"))
 RESULTS_PATH = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "replays", "tournament_results.json"))
 
@@ -34,6 +34,9 @@ PODIUM_COLORS = {1: (235, 195, 90), 2: (200, 205, 215), 3: (205, 148, 95)}
 COMPETITOR_ROW_H = 24
 LIST_X = 20
 LIST_TOP = 150
+# List rows shown at once; longer fields wheel-scroll (before this cap
+# the list simply grew down into the progress bar and standings).
+MAX_VISIBLE_COMPETITORS = 8
 
 
 class TournamentScreen:
@@ -44,6 +47,8 @@ class TournamentScreen:
         self.runner: TournamentRunner | None = None
         self.leaderboard = Leaderboard()
         self.competitors: list[str] = []
+        self.selected_maps: list[str] = []   # empty = every map in maps/
+        self._comp_scroll = 0
         self.completed = 0
         self.total = 0
         self.finished = False
@@ -62,7 +67,9 @@ class TournamentScreen:
     def _build_buttons(self) -> None:
         self.btn_add = Button((20, 20, 150, 36), "Add Competitors...", on_click=self._open_add_browser,
                               tooltip="Pick .py strategy files — tick several to add them all at once")
-        self.btn_start = Button((180, 20, 160, 36), "Start Tournament", on_click=self._start)
+        self.btn_maps = Button((180, 20, 100, 36), "Maps...", on_click=self._open_maps_browser,
+                               tooltip="Choose which maps the round-robin runs on (default: all)")
+        self.btn_start = Button((290, 20, 160, 36), "Start Tournament", on_click=self._start)
         self.btn_back = Button((self.screen_size[0] - 120, 20, 100, 36), "Back", on_click=self._back)
 
     def _back(self) -> None:
@@ -85,6 +92,21 @@ class TournamentScreen:
         if paths:
             user_prefs.update(last_strategy_dir=os.path.dirname(paths[0]))
 
+    def _open_maps_browser(self) -> None:
+        if self.started and not self.finished:
+            return
+        start = user_prefs.existing_dir("last_map_dir", os.path.abspath(MAPS_DIR))
+        self.browser.open("Tournament maps — tick one or several, then Add",
+                          start, (".json",), self._set_maps, multi=True)
+
+    def _set_maps(self, paths: list[str]) -> None:
+        self.selected_maps = list(paths)
+        if paths:
+            user_prefs.update(last_map_dir=os.path.dirname(paths[0]))
+
+    def _maps_in_play(self) -> list[str]:
+        return self.selected_maps or sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+
     def _remove_competitor(self, path: str) -> None:
         if self.started and not self.finished:
             return
@@ -96,7 +118,7 @@ class TournamentScreen:
         # `if self.started: return` disabled it forever).
         if self.started and not self.finished:
             return
-        maps = sorted(glob.glob(os.path.join(MAPS_DIR, "*.json")))
+        maps = self._maps_in_play()
         if len(self.competitors) < 2 or not maps:
             return
 
@@ -133,8 +155,13 @@ class TournamentScreen:
         if self.browser.handle_event(event):
             return
         self.btn_add.handle_event(event)
+        self.btn_maps.handle_event(event)
         self.btn_start.handle_event(event)
         self.btn_back.handle_event(event)
+        if event.type == pygame.MOUSEWHEEL:
+            max_scroll = max(0, len(self.competitors) - MAX_VISIBLE_COMPETITORS)
+            self._comp_scroll = max(0, min(max_scroll, self._comp_scroll - event.y))
+            return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for rect, path in self._remove_rects:
                 if rect.collidepoint(event.pos):
@@ -147,9 +174,12 @@ class TournamentScreen:
         # renders one event late (or never, if no events arrive).
         editing = not self.started or self.finished
         self.btn_add.enabled = editing
+        self.btn_maps.enabled = editing
+        self.btn_maps.text = "Maps... (all)" if not self.selected_maps else f"Maps... ({len(self.selected_maps)})"
         self.btn_start.enabled = editing and len(self.competitors) >= 2
         self.btn_start.text = "Run Again" if self.finished else "Start Tournament"
         self.btn_add.draw(surface)
+        self.btn_maps.draw(surface)
         self.btn_start.draw(surface)
         self.btn_back.draw(surface)
 
@@ -165,15 +195,17 @@ class TournamentScreen:
 
     def _draw_state(self, surface: "pygame.Surface", y: int) -> None:
         if not self.started:
+            maps = self._maps_in_play()
+            map_names = ", ".join(os.path.basename(p).rsplit(".", 1)[0] for p in maps) or "(none found)"
+            draw_text(surface, f"Maps: {map_names}", (20, y + 8), size=12, color=(150, 155, 168))
             if len(self.competitors) < 2:
                 draw_text(surface, "Add at least two competitor strategies to start.",
-                          (20, y + 8), size=12, color=(150, 150, 150))
+                          (20, y + 28), size=12, color=(150, 150, 150))
             else:
                 n = len(self.competitors)
-                maps = len(glob.glob(os.path.join(MAPS_DIR, "*.json")))
-                matches = n * (n - 1) // 2 * maps
-                draw_text(surface, f"Round-robin: {n} competitors x {maps} maps = {matches} matches.",
-                          (20, y + 8), size=12, color=(150, 150, 150))
+                matches = n * (n - 1) // 2 * len(maps)
+                draw_text(surface, f"Round-robin: {n} competitors x {len(maps)} maps = {matches} matches.",
+                          (20, y + 28), size=12, color=(150, 150, 150))
             return
 
         if not self.finished:
@@ -203,7 +235,10 @@ class TournamentScreen:
         y = 132
         self._remove_rects = []
         font = get_font(12)
-        for path in self.competitors:
+        max_scroll = max(0, len(self.competitors) - MAX_VISIBLE_COMPETITORS)
+        self._comp_scroll = min(self._comp_scroll, max_scroll)
+        window = self.competitors[self._comp_scroll:self._comp_scroll + MAX_VISIBLE_COMPETITORS]
+        for path in window:
             name = os.path.basename(path)
             row = pygame.Rect(LIST_X, y, 300, COMPETITOR_ROW_H - 3)
             pygame.draw.rect(surface, (34, 37, 46), row, border_radius=3)
@@ -224,6 +259,11 @@ class TournamentScreen:
         if not self.competitors:
             draw_text(surface, "(none yet — use Add Competitors...)", (LIST_X, y), size=12, color=(120, 124, 138))
             y += COMPETITOR_ROW_H
+        if max_scroll > 0:
+            draw_text(surface, f"showing {self._comp_scroll + 1}-{self._comp_scroll + len(window)} "
+                               f"of {len(self.competitors)} (scroll)",
+                      (LIST_X, y), size=10, color=(120, 124, 138))
+            y += 16
         return y + 4
 
     @staticmethod

@@ -132,6 +132,7 @@ class MapEditorScreen:
         self.sidebar.on_save = self._start_save_flow
         self.sidebar.on_clear = self._clear_map
         self.sidebar.on_undo = self._undo
+        self.sidebar.on_redo = self._redo
         self.sidebar.on_azn_delta = self._change_starting_azn
 
         self._load_default_map()
@@ -302,6 +303,10 @@ class MapEditorScreen:
         self.history.undo(self.doc)
         self.sidebar.set_undo_enabled(self.history.can_undo())
 
+    def _redo(self) -> None:
+        self.history.redo(self.doc)
+        self.sidebar.set_undo_enabled(self.history.can_undo())
+
     def _show_message(self, text: str) -> None:
         self.modal = {"type": "message", "text": text}
 
@@ -337,8 +342,14 @@ class MapEditorScreen:
 
         if event.type == pygame.KEYDOWN:
             if event.mod & pygame.KMOD_CTRL:
+                if event.key == pygame.K_z and (event.mod & pygame.KMOD_SHIFT):
+                    self._redo()
+                    return
                 if event.key == pygame.K_z:
                     self._undo()
+                    return
+                if event.key == pygame.K_y:
+                    self._redo()
                     return
                 if event.key == pygame.K_s:
                     self._start_save_flow()
@@ -499,6 +510,7 @@ class MapEditorScreen:
         # paint until some unrelated action (Load/Clear) refreshed it —
         # found via the v0.0.15 QA screenshots.
         self.sidebar.set_undo_enabled(self.history.can_undo())
+        self.sidebar.set_redo_enabled(self.history.can_redo())
         # Same per-frame sync: undo can also change starting_azn.
         self.sidebar.set_starting_azn(self.doc.starting_azn)
         self.sidebar.draw(surface)
@@ -538,8 +550,6 @@ class MapEditorScreen:
             if icon_fn:
                 surface.blit(icon_fn(28), (icon_box.x + 2, icon_box.y + 2))
 
-        draw_text(surface, self.status_text, (icon_box.right + 10, 16), size=12)
-
         # Right side of the top bar: which file is being edited, with an
         # unsaved-changes dot — before this there was no on-screen record
         # of what you had loaded or whether your work was saved.
@@ -547,7 +557,21 @@ class MapEditorScreen:
         if self._is_dirty():
             name += "  * unsaved"
         label = get_font(12).render(name, True, (220, 190, 120) if self._is_dirty() else (150, 155, 168))
-        surface.blit(label, (self.canvas_rect.width - label.get_width() - 12, 16))
+        label_x = self.canvas_rect.width - label.get_width() - 12
+        surface.blit(label, (label_x, 16))
+
+        # Status text truncates to the space before the filename — at the
+        # minimum window width, the hazard tool's (long) status line used
+        # to overprint the filename (verified by screenshot in v0.0.20's
+        # review pass).
+        font12 = get_font(12)
+        status = self.status_text
+        max_w = label_x - (icon_box.right + 10) - 16
+        if font12.size(status)[0] > max_w:
+            while status and font12.size(status + "...")[0] > max_w:
+                status = status[:-1]
+            status += "..."
+        draw_text(surface, status, (icon_box.right + 10, 16), size=12)
 
     def _draw_modal(self, surface: "pygame.Surface") -> None:
         overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
