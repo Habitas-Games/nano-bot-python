@@ -329,3 +329,56 @@ class TestSnapshotRestore:
         m.starting_azn = 999
         ops.restore(m, old_snap)  # must not raise a KeyError
         assert m.starting_azn == 150
+
+
+class TestHazardOps:
+    def test_add_hazard_appends_a_patrol(self):
+        m = blank()
+        assert ops.add_hazard(m, [(1, 1), (5, 1)], hp=40, damage=3, range_=1.5, move_every=2)
+        assert len(m.hazards) == 1
+        assert m.hazards[0]["path"] == [(1, 1), (5, 1)]
+        assert m.hazards[0]["move_every"] == 2
+
+    def test_single_waypoint_is_a_stationary_guard(self):
+        m = blank()
+        assert ops.add_hazard(m, [(3, 3)])
+        assert m.hazards[0]["path"] == [(3, 3)]
+
+    def test_add_hazard_rejects_impassable_waypoint(self):
+        m = blank()
+        ops.paint_cell(m, 5, 1, Density.BONE)
+        assert not ops.add_hazard(m, [(1, 1), (5, 1)])
+        assert m.hazards == []
+
+    def test_add_hazard_rejects_empty_path(self):
+        m = blank()
+        assert not ops.add_hazard(m, [])
+
+    def test_move_every_floors_at_one(self):
+        m = blank()
+        ops.add_hazard(m, [(1, 1)], move_every=0)
+        assert m.hazards[0]["move_every"] == 1
+
+    def test_find_hazard_at_matches_any_waypoint(self):
+        m = blank()
+        ops.add_hazard(m, [(1, 1), (5, 1)])
+        ops.add_hazard(m, [(8, 8)])
+        assert ops.find_hazard_at(m, 5, 1) == 0
+        assert ops.find_hazard_at(m, 8, 8) == 1
+        assert ops.find_hazard_at(m, 4, 4) == -1
+
+    def test_delete_hazard(self):
+        m = blank()
+        ops.add_hazard(m, [(1, 1)])
+        ops.add_hazard(m, [(2, 2)])
+        ops.delete_hazard(m, 0)
+        assert len(m.hazards) == 1
+        assert m.hazards[0]["path"] == [(2, 2)]
+
+    def test_clear_all_removes_hazards_too(self):
+        # Before v0.0.19 "Clear Map" left patrols in the document — an
+        # invisible leak that silently round-tripped into the next save.
+        m = blank()
+        ops.add_hazard(m, [(1, 1)])
+        ops.clear_all(m)
+        assert m.hazards == []

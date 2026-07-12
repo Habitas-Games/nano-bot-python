@@ -218,4 +218,31 @@ def validate(m: MapData) -> list[str]:
         errors.append("Need at least 1 AZN Node")
     if not m.injection_zones:
         errors.append("Need at least 1 Injection Zone")
+
+    # Objectives buried in Bone are unreachable/unwinnable by
+    # construction — catch them at save time instead of at match time.
+    for hp in m.habitas_points:
+        if not m.is_passable(*hp):
+            errors.append(f"Habitas Point at {hp} is on impassable terrain")
+    for azn in m.azn_nodes:
+        if not m.is_passable(*azn["position"]):
+            errors.append(f"AZN node at {azn['position']} is on impassable terrain")
+    for z in m.injection_zones:
+        rx, ry, rw, rh = z["rect"]
+        if not any(m.is_passable(rx + dx, ry + dy) for dx in range(rw) for dy in range(rh)):
+            errors.append(f"Player {z['player'] + 1} injection zone has no passable cell")
+    for i, hz in enumerate(m.hazards):
+        for wp in hz["path"]:
+            if not m.is_passable(wp[0], wp[1]):
+                errors.append(f"White cell {i + 1} waypoint {tuple(wp)} is on impassable terrain")
+                break
     return errors
+
+
+def derive_map_name(filename: str) -> str:
+    """'bone_maze.json' -> 'Bone Maze'. The display name doubles as the
+    replay->map resolution key (the viewer matches replays to map files
+    by name), so every save stamps a filename-derived name instead of
+    letting new maps pile up as identical 'Untitled Map's."""
+    stem = os.path.basename(filename).rsplit(".", 1)[0]
+    return " ".join(w.capitalize() for w in stem.replace("_", " ").replace("-", " ").split()) or "Untitled Map"

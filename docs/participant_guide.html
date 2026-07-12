@@ -250,6 +250,7 @@
     <li><a href="#api">Full API reference</a></li>
     <li><a href="#example">Walkthrough: example_strategy_v2</a></li>
     <li><a href="#tips">Strategy tips</a></li>
+    <li><a href="#mapmaking">Creating your own maps</a></li>
   </ol>
 </div>
 
@@ -1031,6 +1032,54 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
 </div>
 
 <!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+<!-- ── 10. CREATING MAPS ─────────────────────────────────────────────────── -->
+<h1 id="mapmaking">10 — Creating your own maps</h1>
+
+<p>
+  The <strong>Map Editor</strong> (main menu) authors everything a map file can express:
+  terrain, bloodstreams, Habitas Points, AZN nodes, injection zones for both players,
+  white-cell patrols, and the starting AZN budget. Maps save as JSON into
+  <code>maps/</code>, and every map there is automatically included in matches
+  (pick it in the match window) and tournaments.
+</p>
+
+<h2>The tools</h2>
+<table>
+  <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">Terrain</td><td>Pick LOW/MED/HIGH/BONE, then click-drag to paint. Right-click flood-fills. BONE is impassable — it's how you build walls, mazes and chokepoints.</td></tr>
+    <tr><td class="mono">Stream</td><td>Pick a direction (^ v &gt; &lt;), then paint bloodstream cells. Moving with the arrow costs −2, against it +2 — lay one-way lanes to create fast (and committal) routes.</td></tr>
+    <tr><td class="mono">Habitas</td><td>Click to place a scoring point. Every one must be reachable from both spawn zones — that's where needles go.</td></tr>
+    <tr><td class="mono">AZN</td><td>Click to place a resource node (default 30). Switch to <em>Edit</em>, click the node, press Enter to type a custom quantity.</td></tr>
+    <tr><td class="mono">Zone</td><td>Drag a rectangle for an injection zone. The <em>Zone Owner</em> toggle (P1/P2) sets whose it is — a playable map needs one per player, usually in opposite corners.</td></tr>
+    <tr><td class="mono">White Cell</td><td>Click passable cells to lay a patrol route (numbered as you go), <em>right-click or Enter</em> to finish it — one waypoint makes a stationary guard, more make a loop. Keys 1/2/3 set its speed (a step every 1/2/3 turns). Right-click an existing patrol's waypoint to delete it. Backspace removes the last pending point.</td></tr>
+    <tr><td class="mono">Pan / Edit / Delete</td><td>Move around (middle-drag pans from any tool); select-and-drag elements or resize zones by their corners; erase terrain and elements. Ctrl+Z undoes, Ctrl+S saves.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  <strong>Starting AZN</strong> (sidebar) is the build budget both players begin with —
+  the shipped maps use 150. Lower it to force early economy; raise it for
+  build-heavy openings.
+</p>
+
+<h2>What makes a map fair and fun</h2>
+<ul>
+  <li><strong>Mirror the spawns.</strong> Zones in opposite corners with symmetric access to objectives keeps the map fair regardless of which side a strategy draws.</li>
+  <li><strong>Every objective reachable from both zones.</strong> Save-time validation catches objectives buried in Bone, but reachability through a maze is on you — trace the corridors before shipping.</li>
+  <li><strong>Chokepoints create decisions.</strong> Valve-width gaps in bone are where Blockers and Walls earn their cost; open fields make combat king.</li>
+  <li><strong>Patrols are pressure, not slaughter.</strong> A white cell on the main artery taxes the fast route; one orbiting a rich prize makes it earned. Speed 1 patrols on narrow lanes are brutal — use them sparingly.</li>
+  <li><strong>Stat defaults</strong> for authored patrols are hp 45 / damage 3 / contact range 1.5; the tool sets speed. For finer tuning (a 60-HP bruiser, a longer reach), edit the saved JSON's <code>hazards</code> entries directly — the format is exactly what the tool writes.</li>
+</ul>
+
+<h2>Saving &amp; playing your map</h2>
+<ul>
+  <li><strong>Save</strong> (Ctrl+S) validates first: no objectives, objectives on impassable terrain, fully-boned zones and boned patrol waypoints are all flagged before writing (you can save anyway — the list tells you what to fix).</li>
+  <li>The filename becomes the map's display name (<code>marrow_gauntlet.json</code> → "Marrow Gauntlet") — that name is how replays find the map again, so avoid saving two maps with the same name.</li>
+  <li>The editor warns before <em>New</em> or <em>Load</em> discard unsaved changes, and the top bar shows the current file with an <code>* unsaved</code> marker.</li>
+  <li>To play it: match window → <em>Map:</em> picker → your file. To verify balance quickly, run it headless from both sides: <code>python run_headless.py --map maps/your_map.json --strategy_a ... --strategy_b ...</code> then swap a/b.</li>
+</ul>
+
 <hr style="border:none;border-top:1px solid var(--border);margin:48px 0 24px">
 <p style="color:var(--muted);font-size:13px;text-align:center">
   nano-bot-python Simulation Platform &mdash; good luck

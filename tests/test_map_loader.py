@@ -264,3 +264,43 @@ class TestValidate:
         errors = map_loader.validate(populated_map)
         assert len(errors) == 1
         assert "Habitas" in errors[0]
+
+
+class TestValidatePassability:
+    def test_habitas_on_bone_is_an_error(self, populated_map):
+        x, y = populated_map.habitas_points[0]
+        populated_map.set_cell(x, y, Density.BONE, StreamDir.NONE)
+        errors = map_loader.validate(populated_map)
+        assert any("Habitas" in e and "impassable" in e for e in errors)
+
+    def test_azn_on_bone_is_an_error(self, populated_map):
+        x, y = populated_map.azn_nodes[0]["position"]
+        populated_map.set_cell(x, y, Density.BONE, StreamDir.NONE)
+        errors = map_loader.validate(populated_map)
+        assert any("AZN" in e and "impassable" in e for e in errors)
+
+    def test_fully_boned_zone_is_an_error(self, populated_map):
+        rx, ry, rw, rh = populated_map.injection_zones[0]["rect"]
+        for dx in range(rw):
+            for dy in range(rh):
+                populated_map.set_cell(rx + dx, ry + dy, Density.BONE, StreamDir.NONE)
+        errors = map_loader.validate(populated_map)
+        assert any("injection zone" in e for e in errors)
+
+    def test_hazard_waypoint_on_bone_is_an_error(self, populated_map):
+        populated_map.hazards.append(
+            {"path": [(0, 0)], "hp": 40, "damage": 3, "range": 1.5, "move_every": 2})
+        populated_map.set_cell(0, 0, Density.BONE, StreamDir.NONE)
+        errors = map_loader.validate(populated_map)
+        assert any("White cell" in e for e in errors)
+
+
+class TestDeriveMapName:
+    def test_underscores_become_title_case(self):
+        assert map_loader.derive_map_name("bone_maze.json") == "Bone Maze"
+
+    def test_full_path_and_hyphens(self):
+        assert map_loader.derive_map_name("/tmp/maps/my-cool_map.json") == "My Cool Map"
+
+    def test_empty_stem_falls_back(self):
+        assert map_loader.derive_map_name(".json") == "Untitled Map"

@@ -234,3 +234,19 @@ def back_arrow_icon(size: int = 24, color=(220, 220, 220)) -> "pygame.Surface":
     pygame.draw.line(s, color, (size * 0.28, cy), (size * 0.5, size * 0.72), 3)
     _cache[key] = s
     return s
+
+
+def white_cell_icon(size: int = 28, color=(238, 240, 248)) -> "pygame.Surface":
+    """A pale blob with a nucleus — matches how the playback viewer and
+    the editor canvas draw white-cell hazards, so the sidebar button
+    reads as 'that thing'."""
+    key = ("white_cell", size, color)
+    if key in _cache:
+        return _cache[key]
+    s = _surface(size)
+    c = size // 2
+    pygame.draw.circle(s, color, (c, c), int(size * 0.42))
+    pygame.draw.circle(s, (205, 210, 232), (c, c), int(size * 0.26))
+    pygame.draw.circle(s, (150, 158, 195), (c, c), int(size * 0.13))
+    _cache[key] = s
+    return s

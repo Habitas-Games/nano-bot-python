@@ -54,7 +54,7 @@ is imported as ordinary Python), mobile/web export.
 | MAP-05 | Maps declare **Habitas Points** (scoring objectives), **AZN nodes** (position + finite quantity), a per-map **starting AZN budget**, and optional **white-cell hazards** (patrol path, HP, damage, contact range, speed). | ✅ |
 | MAP-06 | Maps declare one rectangular **injection zone per player**. A player spawns inside their zone; if the requested or default cell is impassable, the engine picks a random passable cell in the zone (seeded RNG — reproducible). | ✅ |
 | MAP-07 | The platform ships with **pre-built maps of distinct character**: Bone Maze (50×50 labyrinth, arteries, patrols) and Heart Chambers (60×60 chambered heart with a one-way bloodstream circuit, valve chokepoints, a contested central chamber, and patrols riding the flow). *Revision 3 (v0.0.16): Simple Tissue and Vascular Network were cut as the weakest maps — quality over count; the earlier "at least 3" target is dropped.* | ✅ |
-| MAP-08 | The map editor can author everything a map JSON can express — including which player owns an injection zone (sidebar Zone Owner toggle). Hazards are displayed and round-trip through save, but are authored in JSON (no hazard tool yet). | 🟡 |
+| MAP-08 | The map editor can author everything a map JSON can express: terrain, streams, habitas, AZN (with quantities), per-player injection zones, **white-cell patrols** (waypoint-by-waypoint tool with speed keys and live preview), the **starting AZN budget**, and **new maps at any size** (10–200 per side). Save validates passability of every objective/waypoint and derives the display name from the filename. | ✅ (v0.0.19) |
 
 ### 4.2 Nanobot Types
 
@@ -188,4 +188,4 @@ What holds the fun back, in priority order:
 |---|---|
 | M1 Core engine · M2 Strategy API · M3 Playback · M4 Tournament · M5 Map editor | ✅ Done (see `docs/versioning/`) |
 | M6 **Make it a game** — GAME-01..05 (fog of war, hazards, combat counterplay, habitas exclusivity, third map) | ✅ Done (v0.0.14) |
-| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); TRN-05 done (v0.0.15); remaining: SCO-03 decision, editor hazard tool (MAP-08) | 🟡 |
+| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); TRN-05 done (v0.0.15); MAP-08 done (v0.0.19); remaining: SCO-03 decision | 🟡 |

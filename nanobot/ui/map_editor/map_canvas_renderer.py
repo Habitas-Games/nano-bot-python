@@ -56,7 +56,8 @@ class MapCanvasRenderer:
     def draw_all(self, surface: "pygame.Surface", m: MapData, canvas_rect: pygame.Rect,
                   zoom: float, scroll_x: int, scroll_y: int, brush_cursor_pos: tuple[int, int],
                   selection: dict, azn_hover_index: int,
-                  preview_rect: tuple[int, int, int, int] | None = None) -> None:
+                  preview_rect: tuple[int, int, int, int] | None = None,
+                  pending_hazard: list[tuple[int, int]] | None = None) -> None:
         pygame.draw.rect(surface, (51, 51, 51), canvas_rect)
         prev_clip = surface.get_clip()
         surface.set_clip(canvas_rect)
@@ -66,6 +67,8 @@ class MapCanvasRenderer:
         self._draw_habitas(surface, m, canvas_rect, zoom, scroll_x, scroll_y, selection)
         self._draw_azn(surface, m, canvas_rect, zoom, scroll_x, scroll_y, selection, azn_hover_index)
         self._draw_hazards(surface, m, canvas_rect, zoom, scroll_x, scroll_y)
+        if pending_hazard:
+            self._draw_pending_hazard(surface, pending_hazard, canvas_rect, zoom, scroll_x, scroll_y)
         if preview_rect:
             self._draw_preview_rect(surface, preview_rect, canvas_rect, zoom, scroll_x, scroll_y)
 
@@ -212,6 +215,22 @@ class MapCanvasRenderer:
             r = self._cell_screen_rect(hz["path"][0][0], hz["path"][0][1], canvas_rect, zoom, scroll_x, scroll_y)
             pygame.draw.circle(surface, (238, 240, 248), r.center, max(4, r.width // 2 - 1))
             pygame.draw.circle(surface, (160, 168, 205), r.center, max(2, r.width // 4))
+
+    def _draw_pending_hazard(self, surface, path: list[tuple[int, int]],
+                              canvas_rect, zoom, scroll_x, scroll_y) -> None:
+        """The patrol being authored right now (hazard tool): green while
+        under construction to distinguish it from committed patrols'
+        white, with numbered waypoints so the loop order is unambiguous."""
+        pts = [self._cell_screen_rect(p[0], p[1], canvas_rect, zoom, scroll_x, scroll_y).center
+               for p in path]
+        if len(pts) > 1:
+            pygame.draw.lines(surface, (120, 220, 140), False, pts, 2)
+        font = get_font(11)
+        for i, pt in enumerate(pts):
+            pygame.draw.circle(surface, (120, 220, 140), pt, 6)
+            pygame.draw.circle(surface, (25, 60, 32), pt, 6, width=1)
+            label = font.render(str(i + 1), True, (15, 30, 18))
+            surface.blit(label, label.get_rect(center=pt))
 
     def _draw_preview_rect(self, surface, preview_rect, canvas_rect, zoom, scroll_x, scroll_y) -> None:
         rx, ry, rw, rh = preview_rect

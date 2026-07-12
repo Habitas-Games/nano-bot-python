@@ -23,6 +23,7 @@ from nanobot.ui.map_editor.tools.azn_tool import AznTool
 from nanobot.ui.map_editor.tools.delete_tool import DeleteTool
 from nanobot.ui.map_editor.tools.edit_tool import EditTool
 from nanobot.ui.map_editor.tools.habitas_tool import HabitasTool
+from nanobot.ui.map_editor.tools.hazard_tool import HazardTool
 from nanobot.ui.map_editor.tools.pan_tool import PanTool
 from nanobot.ui.map_editor.tools.stream_tool import StreamTool
 from nanobot.ui.map_editor.tools.terrain_tool import TerrainTool
@@ -43,7 +44,12 @@ _TOOL_ICON_FNS = {
     "habitas": icons.habitas_icon,
     "azn": icons.azn_icon,
     "zone": icons.zone_icon,
+    "hazard": icons.white_cell_icon,
 }
+
+# New Map size limits: below 10 nothing meaningful fits (two zones plus
+# an objective); above 200 is the requirements' recommended maximum.
+MIN_MAP_SIZE, MAX_MAP_SIZE = 10, 200
 
 _cursor_setting_broken = False
 
@@ -109,6 +115,7 @@ class MapEditorScreen:
             "habitas": HabitasTool(self),
             "azn": AznTool(self),
             "zone": ZoneTool(self),
+            "hazard": HazardTool(self),
             "pan": PanTool(self),
             "edit": EditTool(self),
             "delete": DeleteTool(self),
@@ -120,10 +127,12 @@ class MapEditorScreen:
         self.sidebar.on_stream_dir = self._on_stream_selected
         self.sidebar.on_tool = self.activate_tool
         self.sidebar.on_zone_player = self._set_zone_player
+        self.sidebar.on_new = self._start_new_map_flow
         self.sidebar.on_load = self._open_load_picker
         self.sidebar.on_save = self._start_save_flow
         self.sidebar.on_clear = self._clear_map
         self.sidebar.on_undo = self._undo
+        self.sidebar.on_azn_delta = self._change_starting_azn
 
         self._load_default_map()
         self.activate_tool("terrain")
@@ -206,11 +215,47 @@ class MapEditorScreen:
     def _is_dirty(self) -> bool:
         return self.history.position != self._saved_history_pos
 
+    def _change_starting_azn(self, delta: int) -> None:
+        new_value = max(0, min(995, self.doc.starting_azn + delta))
+        if new_value == self.doc.starting_azn:
+            return
+        # A real document edit like any other: snapshotted (undoable) and
+        # counted by the dirty tracker.
+        self.history.save_state(self.doc)
+        self.doc.starting_azn = new_value
+        self.status_text = f"Starting AZN: {new_value}"
+
+    def _start_new_map_flow(self) -> None:
+        if self._is_dirty():
+            self.modal = {"type": "confirm_discard", "next": "new"}
+            return
+        self.modal = {"type": "new_map", "buffer": "60x60"}
+
+    def _create_new_map(self, spec: str) -> None:
+        try:
+            w_str, h_str = spec.lower().replace(" ", "").split("x")
+            w, h = int(w_str), int(h_str)
+        except ValueError:
+            self._show_message(f"Size must look like 60x60 (got: {spec})")
+            return
+        w = max(MIN_MAP_SIZE, min(MAX_MAP_SIZE, w))
+        h = max(MIN_MAP_SIZE, min(MAX_MAP_SIZE, h))
+        self.doc = ops.init_blank(w, h)
+        self.zoom = 1.0
+        self.scroll_x = 0
+        self.scroll_y = 0
+        self.current_filename = None
+        self.history.reset()
+        self.history.save_state(self.doc)
+        self._saved_history_pos = self.history.position
+        self.sidebar.set_undo_enabled(self.history.can_undo())
+        self.status_text = f"New blank map: {w}x{h}"
+
     def _open_load_picker(self) -> None:
         # Loading replaces the document outright — with unsaved edits in
         # flight, ask first instead of silently discarding them.
         if self._is_dirty():
-            self.modal = {"type": "confirm_discard"}
+            self.modal = {"type": "confirm_discard", "next": "load"}
             return
         self._open_load_picker_now()
 
@@ -237,6 +282,10 @@ class MapEditorScreen:
         if not filename.endswith(".json"):
             filename += ".json"
         path = os.path.join(MAPS_DIR, filename)
+        # The display name doubles as the replay->map resolution key, so
+        # stamp it from the filename on every save — new maps used to all
+        # save as "Untitled Map", which made their replays ambiguous.
+        self.doc.map_name = map_loader.derive_map_name(filename)
         if map_loader.save_to_file(self.doc, path):
             self.current_filename = filename
             self._saved_history_pos = self.history.position
@@ -378,18 +427,36 @@ class MapEditorScreen:
                 elif getattr(self, "_modal_no_rect", None) and self._modal_no_rect.collidepoint(event.pos):
                     self.modal = None
         elif m["type"] == "confirm_discard":
+            def proceed():
+                nxt = m.get("next", "load")
+                self.modal = None
+                if nxt == "new":
+                    self.modal = {"type": "new_map", "buffer": "60x60"}
+                else:
+                    self._open_load_picker_now()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    self.modal = None
-                    self._open_load_picker_now()
+                    proceed()
                 elif event.key == pygame.K_ESCAPE:
                     self.modal = None
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if getattr(self, "_modal_yes_rect", None) and self._modal_yes_rect.collidepoint(event.pos):
-                    self.modal = None
-                    self._open_load_picker_now()
+                    proceed()
                 elif getattr(self, "_modal_no_rect", None) and self._modal_no_rect.collidepoint(event.pos):
                     self.modal = None
+        elif m["type"] == "new_map":
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    spec = m["buffer"]
+                    self.modal = None
+                    self._create_new_map(spec)
+                elif event.key == pygame.K_ESCAPE:
+                    self.modal = None
+                elif event.key == pygame.K_BACKSPACE:
+                    m["buffer"] = m["buffer"][:-1]
+                elif event.unicode and (event.unicode.isdigit() or event.unicode.lower() == "x"):
+                    if len(m["buffer"]) < 8:
+                        m["buffer"] += event.unicode.lower()
         elif m["type"] == "save_filename":
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
@@ -419,9 +486,11 @@ class MapEditorScreen:
         surface.fill((30, 30, 30))
 
         selection = {"type": self.edit_selected_type, "index": self.edit_selected_index}
+        pending_hazard = self.tools["hazard"].pending if self.active_tool_name == "hazard" else None
         self.renderer.draw_all(surface, self.doc, self.canvas_rect, self.zoom,
                                 self.scroll_x, self.scroll_y, self.brush_cursor_pos,
-                                selection, self.azn_hover_index, self.preview_rect)
+                                selection, self.azn_hover_index, self.preview_rect,
+                                pending_hazard=pending_hazard)
 
         self._draw_top_bar(surface)
         # Synced every frame rather than at call sites: every tool pushes
@@ -430,6 +499,8 @@ class MapEditorScreen:
         # paint until some unrelated action (Load/Clear) refreshed it —
         # found via the v0.0.15 QA screenshots.
         self.sidebar.set_undo_enabled(self.history.can_undo())
+        # Same per-frame sync: undo can also change starting_azn.
+        self.sidebar.set_starting_azn(self.doc.starting_azn)
         self.sidebar.draw(surface)
 
         # Drawn last, after the sidebar, so it's never painted over —
@@ -523,6 +594,15 @@ class MapEditorScreen:
             self._modal_no_rect = no_rect
             Button(yes_rect, "Save Anyway").draw(surface)
             Button(no_rect, "Cancel").draw(surface)
+
+        elif m["type"] == "new_map":
+            draw_text(surface, "New map size (width x height):", (box_x + 16, box_y + 20), size=14)
+            input_rect = pygame.Rect(box_x + 16, box_y + 50, box_w - 32, 28)
+            pygame.draw.rect(surface, (20, 22, 30), input_rect)
+            pygame.draw.rect(surface, (90, 95, 110), input_rect, width=1)
+            draw_text(surface, m["buffer"] + "_", (input_rect.x + 6, input_rect.y + 6), size=13)
+            draw_text(surface, f"{MIN_MAP_SIZE}-{MAX_MAP_SIZE} per side. Enter to create, Esc to cancel.",
+                      (box_x + 16, box_y + box_h - 26), size=11, color=(150, 150, 150))
 
         elif m["type"] == "save_filename":
             draw_text(surface, "Save map as:", (box_x + 16, box_y + 20), size=14)

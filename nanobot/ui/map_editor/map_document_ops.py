@@ -62,6 +62,10 @@ def clear_all(m: MapData) -> None:
     m.habitas_points.clear()
     m.azn_nodes.clear()
     m.injection_zones.clear()
+    # Hazards too — before the editor could author them (v0.0.19) this
+    # was an invisible leak: "Clear Map" left the old patrols in the
+    # document, silently round-tripping into the next save.
+    m.hazards.clear()
 
 
 def delete_at_position(m: MapData, x: int, y: int) -> None:
@@ -102,6 +106,37 @@ def place_azn(m: MapData, x: int, y: int, quantity: int = 30) -> bool:
 
 def place_zone(m: MapData, rect: tuple[int, int, int, int], player: int = 0) -> None:
     m.injection_zones.append({"player": player, "rect": rect})
+
+
+# --- hazards (white cells) ---
+
+def add_hazard(m: MapData, path: list[tuple[int, int]], hp: int = 45, damage: int = 3,
+               range_: float = 1.5, move_every: int = 2) -> bool:
+    """Append a patrol. Every waypoint must be in bounds and passable —
+    the engine walks hazards along this path, and a Bone waypoint would
+    strand the patrol forever (the same class of trap as the sealed
+    spawn corner fixed in v0.0.10)."""
+    if not path:
+        return False
+    for x, y in path:
+        if not m.is_passable(x, y):
+            return False
+    m.hazards.append({"path": [tuple(p) for p in path], "hp": int(hp), "damage": int(damage),
+                      "range": float(range_), "move_every": max(1, int(move_every))})
+    return True
+
+
+def find_hazard_at(m: MapData, x: int, y: int) -> int:
+    """Index of the first hazard with a waypoint on this cell, or -1."""
+    for i, hz in enumerate(m.hazards):
+        if (x, y) in [tuple(p) for p in hz["path"]]:
+            return i
+    return -1
+
+
+def delete_hazard(m: MapData, index: int) -> None:
+    if 0 <= index < len(m.hazards):
+        m.hazards.pop(index)
 
 
 # --- element lookup / editing ---

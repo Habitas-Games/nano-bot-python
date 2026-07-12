@@ -9,7 +9,7 @@ import pygame
 
 from nanobot.core.map_data import Density, StreamDir
 from nanobot.ui import icons
-from nanobot.ui.widgets import Button, ButtonGroup, draw_hover_tooltips, draw_text
+from nanobot.ui.widgets import Button, ButtonGroup, draw_hover_tooltips, draw_text, get_font
 
 PANEL_WIDTH = 250
 PADDING = 10
@@ -25,10 +25,14 @@ class MapEditorSidebar:
         self.on_stream_dir = None    # callback(StreamDir)
         self.on_tool = None          # callback(str)
         self.on_zone_player = None   # callback(int) — 0-indexed owner for new zones
+        self.on_new = None
         self.on_load = None
         self.on_save = None
         self.on_clear = None
         self.on_undo = None
+        self.on_azn_delta = None     # callback(int) — +/- step for starting AZN
+
+        self._starting_azn_display = 150
 
         self.terrain_group = ButtonGroup()
         self.stream_group = ButtonGroup()
@@ -66,6 +70,7 @@ class MapEditorSidebar:
                     btn.rect.x += dx
             for btn in self._action_buttons:
                 btn.rect.x += dx
+            self._azn_value_center = (self._azn_value_center[0] + dx, self._azn_value_center[1])
 
     def _build(self) -> None:
         self._headers = []
@@ -118,6 +123,7 @@ class MapEditorSidebar:
             (icons.habitas_icon, "habitas", "Place Habitas"),
             (icons.azn_icon, "azn", "Place AZN"),
             (icons.zone_icon, "zone", "Place Zone"),
+            (icons.white_cell_icon, "hazard", "White Cell patrol (click waypoints, right-click to finish)"),
         ]):
             bx = x + i * (size + 2)
             btn = Button((bx, y, size, size), "", on_click=lambda t=tool_name: self._select_tool(t),
@@ -153,8 +159,33 @@ class MapEditorSidebar:
             self.tool_group.add(btn)
             self._tool_buttons_by_name[tool_name] = btn
         y += size + 10
-        for label, attr, tip in [("Load", "on_load", "Open a map from maps/ (warns about unsaved changes)"),
-                                  ("Save", "on_save", "Save to maps/ (Ctrl+S)"),
+
+        # Map settings: the starting AZN budget both players get. Was
+        # write-only from the editor's perspective (round-tripped since
+        # v0.0.2 but with no UI to change it).
+        self._headers.append(("Starting AZN", y))
+        y += 18
+        half = (PANEL_WIDTH - 2 * PADDING - 8) // 2
+        self.azn_minus_btn = Button((x, y, 34, 26), "-25",
+                                    on_click=lambda: self._fire_azn_delta(-25),
+                                    tooltip="Both players start each match with this AZN budget")
+        self.azn_plus_btn = Button((x + PANEL_WIDTH - 2 * PADDING - 34, y, 34, 26), "+25",
+                                   on_click=lambda: self._fire_azn_delta(25))
+        self._azn_value_center = (x + (PANEL_WIDTH - 2 * PADDING) // 2, y + 13)
+        self._action_buttons.extend([self.azn_minus_btn, self.azn_plus_btn])
+        y += 26 + 10
+
+        # File row 1: New + Load share a row (the sidebar is near its
+        # height budget at the 1024x640 minimum window size).
+        btn_new = Button((x, y, half, ROW_HEIGHT), "New",
+                         on_click=lambda: self._fire("on_new"),
+                         tooltip="Blank map with a size you choose (warns about unsaved changes)")
+        btn_load = Button((x + half + 8, y, half, ROW_HEIGHT), "Load",
+                          on_click=lambda: self._fire("on_load"),
+                          tooltip="Open a map from maps/ (warns about unsaved changes)")
+        self._action_buttons.extend([btn_new, btn_load])
+        y += ROW_HEIGHT + 4
+        for label, attr, tip in [("Save", "on_save", "Save to maps/ (Ctrl+S)"),
                                   ("Clear Map", "on_clear", "Wipe the whole map (undoable)")]:
             btn = Button((x, y, PANEL_WIDTH - 2 * PADDING, ROW_HEIGHT), label,
                          on_click=lambda a=attr: self._fire(a), tooltip=tip)
@@ -198,6 +229,13 @@ class MapEditorSidebar:
         if cb:
             cb()
 
+    def _fire_azn_delta(self, delta: int) -> None:
+        if self.on_azn_delta:
+            self.on_azn_delta(delta)
+
+    def set_starting_azn(self, value: int) -> None:
+        self._starting_azn_display = value
+
     def set_undo_enabled(self, enabled: bool) -> None:
         if self.undo_btn:
             self.undo_btn.enabled = enabled
@@ -237,6 +275,9 @@ class MapEditorSidebar:
         self.zone_player_group.draw(surface)
         for btn in self._action_buttons:
             btn.draw(surface)
+
+        value = get_font(14).render(str(self._starting_azn_display), True, (230, 210, 120))
+        surface.blit(value, value.get_rect(center=self._azn_value_center))
 
         # Tooltips drawn last so they overlay everything else — via the
         # shared widgets helper (this sidebar used to be the only place in
