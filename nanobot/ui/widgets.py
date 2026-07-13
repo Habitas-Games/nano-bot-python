@@ -326,22 +326,36 @@ def _basename(path: str) -> str:
     return path.replace("\\", "/").rsplit("/", 1)[-1]
 
 
-def _ask_directory(initial: str) -> str | None:
-    """Open the OS folder picker (tkinter). Returns the chosen absolute
-    path, "" if the user cancelled, or None if no dialog is available
-    (headless / tkinter missing) — callers fall back to typed paths.
-    Module-level so tests can monkeypatch it."""
+# The tk dialog runs in a SEPARATE PROCESS, never in-process: tkinter's
+# event loop and SDL's cannot share a main thread — calling
+# filedialog.askdirectory() directly froze the whole app while the
+# dialog was open (confirmed by the user on the first shipped version
+# of this feature). A subprocess keeps the pygame loop pumping; the
+# browser polls it each frame and stays cancellable.
+_DIALOG_SCRIPT = """
+import sys
+import tkinter as tk
+from tkinter import filedialog
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+print(filedialog.askdirectory(initialdir=sys.argv[1], title="Choose folder"))
+"""
+
+
+def _launch_directory_dialog(initial: str):
+    """Start the OS folder picker in a child process. Returns a Popen
+    (poll it; stdout's single line is the chosen path, empty = cancel,
+    nonzero exit = no dialog available) or None if even launching
+    failed. Module-level seam so tests can stub it."""
+    import subprocess
+    import sys as _sys
     try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        path = filedialog.askdirectory(initialdir=initial, title="Choose folder")
-        root.destroy()
-        return path or ""
+        return subprocess.Popen([_sys.executable, "-c", _DIALOG_SCRIPT, initial],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 text=True)
     except Exception as e:
-        print(f"OS folder dialog unavailable ({e}); type the path instead")
+        print(f"Could not launch the OS folder dialog ({e}); type the path instead")
         return None
 
 
@@ -374,6 +388,7 @@ class FileBrowserModal:
         self._cancel_rect: pygame.Rect | None = None
         self._folder_rect: pygame.Rect | None = None
         self._path_rect: pygame.Rect | None = None
+        self._dialog_proc = None  # Popen of the OS folder dialog subprocess
         # Click the path line to type/paste a folder directly — the
         # keyboard-only fallback when the OS dialog isn't available.
         self._editing_path = False
@@ -397,8 +412,10 @@ class FileBrowserModal:
         self._filter = ""
         self._editing_path = False
         self._path_buffer = ""
+        self._cancel_dialog()
 
     def close(self) -> None:
+        self._cancel_dialog()
         self._on_select = None
 
     def _entries(self) -> list[tuple[str, bool]]:
@@ -447,18 +464,50 @@ class FileBrowserModal:
         return True
 
     def _open_os_dialog(self) -> None:
-        chosen = _ask_directory(self._dir)
-        if chosen:
-            self._navigate_to(chosen)
-        elif chosen is None:
-            # No dialog on this system — drop into typed-path mode so the
+        if self._dialog_proc is not None:
+            return  # one at a time
+        proc = _launch_directory_dialog(self._dir)
+        if proc is None:
+            # Couldn't even launch — drop into typed-path mode so the
             # button still leads somewhere useful.
             self._editing_path = True
             self._path_buffer = self._dir
+            return
+        self._dialog_proc = proc
+
+    def _poll_dialog(self) -> None:
+        """Called every draw while the OS dialog subprocess is open —
+        the app keeps rendering and responding instead of freezing."""
+        if self._dialog_proc is None or self._dialog_proc.poll() is None:
+            return
+        proc, self._dialog_proc = self._dialog_proc, None
+        out = (proc.stdout.read() if proc.stdout else "").strip()
+        if proc.returncode != 0:
+            # tkinter unavailable in the child (headless, not installed):
+            # fall back to typing the path.
+            self._editing_path = True
+            self._path_buffer = self._dir
+        elif out:
+            self._navigate_to(out)
+        # empty output = user cancelled the dialog: no-op
+
+    def _cancel_dialog(self) -> None:
+        if self._dialog_proc is not None:
+            try:
+                self._dialog_proc.kill()
+            except Exception:
+                pass
+            self._dialog_proc = None
 
     def handle_event(self, event: "pygame.event.Event") -> bool:
         if not self.is_open:
             return False
+        if self._dialog_proc is not None:
+            # The OS dialog owns the interaction; the app stays alive and
+            # rendering, and Esc abandons the wait (kills the child).
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self._cancel_dialog()
+            return True
         if event.type == pygame.KEYDOWN:
             if self._editing_path:
                 if event.key == pygame.K_RETURN:
@@ -534,6 +583,7 @@ class FileBrowserModal:
     def draw(self, surface: "pygame.Surface", screen_size: tuple[int, int]) -> None:
         if not self.is_open:
             return
+        self._poll_dialog()
         overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
         surface.blit(overlay, (0, 0))
@@ -545,6 +595,22 @@ class FileBrowserModal:
         self._box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
         pygame.draw.rect(surface, (45, 48, 58), self._box_rect, border_radius=6)
         pygame.draw.rect(surface, (90, 95, 110), self._box_rect, width=2, border_radius=6)
+
+        if self._dialog_proc is not None:
+            # Waiting on the OS dialog (separate process — the app keeps
+            # running; the first version called tkinter in-process and
+            # froze the whole program while the dialog was open).
+            draw_text(surface, self._title, (box_x + 16, box_y + 12), size=14)
+            draw_text(surface, "Choose a folder in the system dialog...",
+                      (box_x + 16, box_y + box_h // 2 - 18), size=14, color=(200, 205, 218))
+            draw_text(surface, "(Esc here abandons the dialog)",
+                      (box_x + 16, box_y + box_h // 2 + 6), size=11, color=(140, 144, 158))
+            self._row_rects = []
+            self._confirm_rect = None
+            self._cancel_rect = None
+            self._folder_rect = None
+            self._path_rect = None
+            return
 
         draw_text(surface, self._title, (box_x + 16, box_y + 12), size=14)
         font12 = get_font(12)
