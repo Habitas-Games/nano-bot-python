@@ -43,6 +43,13 @@ from any tool, and it warns before discarding unsaved changes).
 
 ## Writing a strategy
 
+> **Using an AI assistant (ChatGPT, Claude, Gemini, …) to write your
+> strategy?** Give it [`docs/STRATEGY_API.md`](docs/STRATEGY_API.md) —
+> a single, self-contained, plain-text spec of the entire API with a
+> verified working example. It's written so an LLM can't invent a
+> different API (the participant guide is styled HTML meant for human
+> reading, which LLMs consume poorly). Paste that file in, not a link.
+
 ```bash
 cp strategies/example_strategy.py strategies/my_strategy.py
 ```
