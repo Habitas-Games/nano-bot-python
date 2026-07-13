@@ -65,6 +65,11 @@ class ExampleIpCreator(ReactiveDefenseMixin, NanoStrategy):
                 nano_ai.move_to(stand_pos)
             else:
                 nano_ai.stop()
+        elif self.needs_defense(map_info, my_bots, needle):
+            # Secure the needle FIRST — the watchtower + reactive wall have
+            # to be up before a raider arrives, so they take priority over
+            # the IPCreator expansion below. See reactive_defense.py.
+            self.run_defense_ai(map_info, nano_ai, needle, my_bots)
         elif ip_creator is None and map_info.azn_bank >= BUILD_IP_CREATOR_COST:
             adj = self._adjacent_free(nano_ai.position, map_info)
             if adj != (-1, -1):
@@ -75,10 +80,8 @@ class ExampleIpCreator(ReactiveDefenseMixin, NanoStrategy):
                 nano_ai.build("NanoCollector", adj)
                 self._second_collector_spawned = True
         elif needle is not None:
-            # Economy is built out: hand the NanoAI to reactive defense
-            # (watchtower explorer, reactive wall, garrison) so a raider
-            # can't quietly dismantle the needle. See
-            # nanobot/api/reactive_defense.py.
+            # Economy built out and no active threat: garrison the needle,
+            # ready to drop a reactive wall the moment one appears.
             self.run_defense_ai(map_info, nano_ai, needle, my_bots)
         else:
             nano_ai.stop()

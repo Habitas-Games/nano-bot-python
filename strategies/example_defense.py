@@ -31,6 +31,7 @@ from nanobot.api.bot_proxy import BotProxy
 from nanobot.api.habitas_point_info import HabitasPointInfo
 from nanobot.api.map_info import MapInfo
 from nanobot.api.nano_strategy import NanoStrategy
+from nanobot.api.reactive_defense import ReactiveDefenseMixin
 
 BUILD_COLLECTOR_COST = 20
 BUILD_NEEDLE_COST = 40
@@ -44,7 +45,7 @@ BUILD_EXPLORER_COST = 15
 THREAT_RADIUS = 16  # react when an armed enemy gets this close to the needle
 
 
-class ExampleDefense(NanoStrategy):
+class ExampleDefense(ReactiveDefenseMixin, NanoStrategy):
     def __init__(self) -> None:
         self._spawn_pos: tuple[int, int] | None = None
 
@@ -121,31 +122,32 @@ class ExampleDefense(NanoStrategy):
         if collector is None:
             return
 
-        nearest_azn = self._nearest_azn(map_info, collector.position)
-        if needle is not None and needle.azn >= NEEDLE_SCORE_FLOOR and collector.azn > 0 \
-                and map_info.azn_bank < WAR_CHEST:
-            # Save for wall money — but only up to the war chest. Hoarding
-            # beyond it (confirmed in a full tournament run) traded away
-            # ~100 pts/turn of needle score for money that peaceful matches
-            # never spend; once the chest is full, every further AZN goes
-            # back into the needle where it scores.
-            deliver_target = self._spawn_pos
-        elif needle is not None and collector.azn > 0 and (nearest_azn is None or collector.azn >= 10):
-            deliver_target = needle.position
-        else:
-            deliver_target = None
+        # Shoot back at a raider in range before doing economy. Without
+        # this the watchtower + reactive wall alone can't win the fight
+        # (measured: wall-without-shoot loses to example_combat 0/24) —
+        # the wall buys time, the return fire drives the raider off.
+        if self.shoot_back(map_info, collector):
+            return
 
-        if deliver_target is not None and collector.position == deliver_target:
-            collector.transfer_to(deliver_target)
-        elif deliver_target is not None and collector.azn >= 10:
-            collector.move_to(deliver_target)
+        # Feed the needle and stay near it — do NOT trek off to bank AZN.
+        # The old war-chest banking (deliver surplus to spawn) pulled the
+        # collector away from the needle, so it was never positioned to
+        # shoot back at a raider, and lost to example_combat 0/24. The
+        # reactive walls are funded from the starting 150-AZN bank (which
+        # covers several walls before the raid arrives — the same way
+        # example_strategy_v2 defends without ever banking). Keeping the
+        # collector home to feed and shoot flips the matchup.
+        nearest_azn = self._nearest_azn(map_info, collector.position)
+        if needle is not None and collector.azn > 0 and (nearest_azn is None or collector.azn >= 10):
+            if collector.position == needle.position:
+                collector.transfer_to(needle.position)
+            else:
+                collector.move_to(needle.position)
         elif nearest_azn is not None:
             if collector.position == nearest_azn.position:
                 collector.collect_from(nearest_azn.position)
             else:
                 collector.move_to(nearest_azn.position)
-        elif deliver_target is not None and collector.azn > 0:
-            collector.move_to(deliver_target)
 
     def _go_build(self, nano_ai: BotProxy, map_info: MapInfo,
                    cell: tuple[int, int], bot_type: str) -> None:

@@ -45,6 +45,20 @@ class ReactiveDefenseMixin:
     don't depend on the host strategy's helpers) so any strategy can use
     them regardless of how it names its own utilities."""
 
+    def needs_defense(self, map_info: MapInfo, my_bots: list[BotProxy],
+                      needle: BotProxy) -> bool:
+        """True while the needle still lacks its watchtower, or a raider is
+        already closing on it. Prioritise `run_defense_ai` over the rest of
+        your build order whenever this is True — a watchtower that arrives
+        after the raid has started is too late (measured: a late-defending
+        economy strategy loses to example_combat 15/16, an early-defending
+        one wins 12/16)."""
+        if needle is None:
+            return False
+        if self._def_find(my_bots, "NanoExplorer") is None:
+            return True
+        return self._def_nearest_threat(map_info, needle.position) is not None
+
     def run_defense_ai(self, map_info: MapInfo, nano_ai: BotProxy,
                        needle: BotProxy, my_bots: list[BotProxy]) -> bool:
         """NanoAI defensive priorities once a needle exists: build a
