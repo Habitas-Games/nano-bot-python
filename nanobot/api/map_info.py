@@ -24,6 +24,9 @@ class MapInfo:
         self.visible_enemies: list[dict] = []  # {id, type, position, hp} — scan-limited
         self.hazards: list[dict] = []          # {id, position, hp} — scan-limited white cells
         self.azn_bank: int = 0
+        # SCO-03: extra points/turn for holding every Habitas Point on
+        # this map (0 = the map offers no such bonus).
+        self.bonus_hold_all: int = 0
         self._map: MapData | None = None
 
     @staticmethod
@@ -35,6 +38,7 @@ class MapInfo:
         mi.size = (map_data.width, map_data.height)
         mi.turn = turn_number
         mi.azn_bank = bank
+        mi.bonus_hold_all = map_data.bonus_hold_all
 
         mi.habitas_points = [HabitasPointInfo.from_state(s) for s in habitas_state]
         mi.azn_nodes = [AZNNodeInfo.from_state(s) for s in azn_state]

@@ -244,6 +244,7 @@ def snapshot(m: MapData) -> dict:
         "width": m.width,
         "height": m.height,
         "starting_azn": m.starting_azn,
+        "bonus_hold_all": m.bonus_hold_all,
         "cells": [dict(c) for c in m._cells],
         "habitas_points": list(m.habitas_points),
         "azn_nodes": [dict(a) for a in m.azn_nodes],
@@ -256,6 +257,7 @@ def restore(m: MapData, snap: dict) -> None:
     m.width = snap["width"]
     m.height = snap["height"]
     m.starting_azn = snap.get("starting_azn", 150)  # .get(): tolerate pre-existing snapshots taken before this field existed
+    m.bonus_hold_all = snap.get("bonus_hold_all", 0)
     m._cells = [dict(c) for c in snap["cells"]]
     m.habitas_points = list(snap["habitas_points"])
     m.azn_nodes = [dict(a) for a in snap["azn_nodes"]]

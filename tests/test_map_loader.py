@@ -304,3 +304,28 @@ class TestDeriveMapName:
 
     def test_empty_stem_falls_back(self):
         assert map_loader.derive_map_name(".json") == "Untitled Map"
+
+
+class TestBonusHoldAll:
+    def test_default_is_zero(self, populated_map):
+        assert populated_map.bonus_hold_all == 0
+
+    def test_round_trips_when_set(self, tmp_path, populated_map):
+        populated_map.bonus_hold_all = 50
+        path = str(tmp_path / "m.json")
+        assert map_loader.save_to_file(populated_map, path)
+        reloaded = map_loader.load_from_file(path)
+        assert reloaded.bonus_hold_all == 50
+
+    def test_omitted_from_json_when_zero(self, populated_map):
+        j = map_loader.create_json(populated_map)
+        assert "bonus_hold_all" not in j
+
+    def test_negative_values_clamp_to_zero_on_load(self, tmp_path, populated_map):
+        path = str(tmp_path / "m.json")
+        map_loader.save_to_file(populated_map, path)
+        import json as _json
+        data = _json.load(open(path))
+        data["bonus_hold_all"] = -10
+        _json.dump(data, open(path, "w"))
+        assert map_loader.load_from_file(path).bonus_hold_all == 0

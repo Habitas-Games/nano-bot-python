@@ -91,6 +91,7 @@ def _parse_body(data: dict, width: int, height: int) -> MapData:
     m = MapData(width, height)
     m.map_name = data.get("name", "Unnamed")
     m.starting_azn = int(data.get("starting_azn", 150))
+    m.bonus_hold_all = max(0, int(data.get("bonus_hold_all", 0)))
 
     default_density = string_to_density(data.get("default_density", "low"))
     for i in range(m.width * m.height):
@@ -155,10 +156,14 @@ def create_json(m: MapData, map_name: str | None = None, starting_azn: int | Non
         "default_density": "low",
         "starting_azn": starting_azn if starting_azn is not None else m.starting_azn,
         "cells": [],
+    }
+    if m.bonus_hold_all > 0:
+        out["bonus_hold_all"] = m.bonus_hold_all
+    out.update({
         "habitas_points": [],
         "azn_nodes": [],
         "injection_zones": [],
-    }
+    })
 
     for i, cell in enumerate(m._cells):
         if cell["density"] != Density.LOW or cell["stream_dir"] != StreamDir.NONE:

@@ -418,6 +418,15 @@ class SimulationCore:
             azn = hp["azn_stored"]
             self._scores[owner] += (20 + 2 * azn) if azn > 0 else 5
 
+        # SCO-03: per-map hold-all bonus — extra points per turn while a
+        # single player owns EVERY Habitas Point. Stateless like the rest
+        # of scoring: lose any point, lose the bonus the same turn.
+        bonus = self._map.bonus_hold_all
+        if bonus > 0 and self._habitas_state:
+            owners = {hp["owner"] for hp in self._habitas_state}
+            if len(owners) == 1 and -1 not in owners:
+                self._scores[owners.pop()] += bonus
+
     def _check_end_conditions(self) -> bool:
         living = 0
         for pid in range(self._player_count):

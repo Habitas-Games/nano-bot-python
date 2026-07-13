@@ -32,8 +32,10 @@ class MapEditorSidebar:
         self.on_undo = None
         self.on_redo = None
         self.on_azn_delta = None     # callback(int) — +/- step for starting AZN
+        self.on_bonus_delta = None   # callback(int) — +/- step for the hold-all bonus
 
         self._starting_azn_display = 150
+        self._bonus_display = 0
 
         self.terrain_group = ButtonGroup()
         self.stream_group = ButtonGroup()
@@ -71,7 +73,9 @@ class MapEditorSidebar:
                     btn.rect.x += dx
             for btn in self._action_buttons:
                 btn.rect.x += dx
-            self._azn_value_center = (self._azn_value_center[0] + dx, self._azn_value_center[1])
+            for attr in ("_azn_value_center", "_azn_label_pos", "_bonus_value_center", "_bonus_label_pos"):
+                px, py = getattr(self, attr)
+                setattr(self, attr, (px + dx, py))
 
     def _build(self) -> None:
         self._headers = []
@@ -161,19 +165,31 @@ class MapEditorSidebar:
             self._tool_buttons_by_name[tool_name] = btn
         y += size + 10
 
-        # Map settings: the starting AZN budget both players get. Was
-        # write-only from the editor's perspective (round-tripped since
-        # v0.0.2 but with no UI to change it).
-        self._headers.append(("Starting AZN", y))
+        # Map settings: the starting AZN budget and the SCO-03 hold-all
+        # bonus — both per-map JSON fields that were write-only from the
+        # editor's perspective until they got these steppers.
+        self._headers.append(("Map Settings", y))
         y += 18
         half = (PANEL_WIDTH - 2 * PADDING - 8) // 2
-        self.azn_minus_btn = Button((x, y, 34, 26), "-25",
+        right_x = x + PANEL_WIDTH - 2 * PADDING - 34
+        self.azn_minus_btn = Button((x + 52, y, 34, 26), "-25",
                                     on_click=lambda: self._fire_azn_delta(-25),
                                     tooltip="Both players start each match with this AZN budget")
-        self.azn_plus_btn = Button((x + PANEL_WIDTH - 2 * PADDING - 34, y, 34, 26), "+25",
+        self.azn_plus_btn = Button((right_x, y, 34, 26), "+25",
                                    on_click=lambda: self._fire_azn_delta(25))
-        self._azn_value_center = (x + (PANEL_WIDTH - 2 * PADDING) // 2, y + 13)
+        self._azn_label_pos = (x, y + 7)
+        self._azn_value_center = (x + 52 + 34 + (right_x - x - 52 - 34) // 2, y + 13)
         self._action_buttons.extend([self.azn_minus_btn, self.azn_plus_btn])
+        y += 26 + 4
+        self.bonus_minus_btn = Button((x + 52, y, 34, 26), "-10",
+                                      on_click=lambda: self._fire_bonus_delta(-10),
+                                      tooltip="Extra points/turn while one player holds EVERY Habitas Point (0 = off)")
+        self.bonus_plus_btn = Button((right_x, y, 34, 26), "+10",
+                                     on_click=lambda: self._fire_bonus_delta(10),
+                                     tooltip="Extra points/turn while one player holds EVERY Habitas Point")
+        self._bonus_label_pos = (x, y + 7)
+        self._bonus_value_center = (self._azn_value_center[0], y + 13)
+        self._action_buttons.extend([self.bonus_minus_btn, self.bonus_plus_btn])
         y += 26 + 10
 
         # File row 1: New + Load share a row (the sidebar is near its
@@ -237,8 +253,15 @@ class MapEditorSidebar:
         if self.on_azn_delta:
             self.on_azn_delta(delta)
 
+    def _fire_bonus_delta(self, delta: int) -> None:
+        if self.on_bonus_delta:
+            self.on_bonus_delta(delta)
+
     def set_starting_azn(self, value: int) -> None:
         self._starting_azn_display = value
+
+    def set_bonus(self, value: int) -> None:
+        self._bonus_display = value
 
     def set_undo_enabled(self, enabled: bool) -> None:
         if self.undo_btn:
@@ -284,8 +307,13 @@ class MapEditorSidebar:
         for btn in self._action_buttons:
             btn.draw(surface)
 
+        draw_text(surface, "AZN", self._azn_label_pos, size=11, color=(170, 175, 190))
         value = get_font(14).render(str(self._starting_azn_display), True, (230, 210, 120))
         surface.blit(value, value.get_rect(center=self._azn_value_center))
+        draw_text(surface, "Bonus", self._bonus_label_pos, size=11, color=(170, 175, 190))
+        bonus_color = (150, 220, 160) if self._bonus_display > 0 else (120, 124, 138)
+        bval = get_font(14).render(str(self._bonus_display) if self._bonus_display else "off", True, bonus_color)
+        surface.blit(bval, bval.get_rect(center=self._bonus_value_center))
 
         # Tooltips drawn last so they overlay everything else — via the
         # shared widgets helper (this sidebar used to be the only place in

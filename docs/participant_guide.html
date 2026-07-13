@@ -751,6 +751,16 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
   <span style="font-size:14px;color:var(--muted)">or 5 if the needle is planted but carries no AZN</span>
 </div>
 
+<p>
+  Some maps also declare a <strong>hold-all bonus</strong>
+  (<code>map_info.bonus_hold_all</code> — shown in the match window's HUD):
+  extra points <em>every turn</em> while a single player holds <em>every</em>
+  Habitas Point on the map. It's stateless like all scoring — lose one point
+  and the bonus stops the same turn. Heart Chambers ships with +50/turn:
+  full map control there is worth double a bare five-needle spread, but you
+  have to keep all five alive at once to collect it.
+</p>
+
 <table>
   <thead><tr><th>Situation</th><th>Points / turn</th></tr></thead>
   <tbody>
@@ -874,6 +884,7 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
     <tr><td><code>size</code></td><td>tuple[int, int]</td><td>Map dimensions (width, height)</td></tr>
     <tr><td><code>turn</code></td><td>int</td><td>Current turn number (1–1500)</td></tr>
     <tr><td><code>azn_bank</code></td><td>int</td><td>Your current AZN build budget</td></tr>
+    <tr><td><code>bonus_hold_all</code></td><td>int</td><td>Extra points/turn for holding every Habitas Point on this map (0 = no bonus) — see §6 Scoring</td></tr>
     <tr><td><code>habitas_points</code></td><td>list[HabitasPointInfo]</td><td>All Habitas Points and their state</td></tr>
     <tr><td><code>azn_nodes</code></td><td>list[AZNNodeInfo]</td><td>All AZN nodes and quantities remaining</td></tr>
     <tr><td><code>visible_enemies</code></td><td>list[dict]</td><td>Enemy bots within any of your bots' Scan radii: <code>{id, type, position, hp}</code> — see §4 Fog of war</td></tr>
@@ -1064,9 +1075,13 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
 </table>
 
 <p>
-  <strong>Starting AZN</strong> (sidebar) is the build budget both players begin with —
-  the shipped maps use 150. Lower it to force early economy; raise it for
-  build-heavy openings.
+  <strong>Map Settings</strong> (sidebar): <strong>AZN</strong> is the build budget both
+  players begin with — the shipped maps use 150; lower it to force early economy,
+  raise it for build-heavy openings. <strong>Bonus</strong> is the hold-all bonus
+  (see §6 Scoring): extra points per turn while one player holds every Habitas
+  Point — "off" by default; Heart Chambers uses +50. A big bonus rewards
+  aggressive full-map play; on maps with many points it's nearly uncollectable
+  and mostly decorative.
 </p>
 
 <h2>What makes a map fair and fun</h2>

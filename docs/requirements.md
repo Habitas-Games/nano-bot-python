@@ -105,7 +105,7 @@ implemented and verified by example strategies that exercise them.
 |---|---|---|
 | SCO-01 | Needle on a Habitas Point with 0 AZN: **5 pts/turn-recomputed**. | ✅ |
 | SCO-02 | Needle with AZN: **20 + 2 × AZN stored**. Scores are recomputed from live state every turn — a destroyed needle's contribution vanishes immediately. | ✅ |
-| SCO-03 | Optional per-map bonus objectives (e.g. +50 for holding all points). | ⬜ (never implemented; keep or drop with M6) |
+| SCO-03 | Optional per-map bonus objective: `bonus_hold_all` — extra points per turn while **one player holds every Habitas Point** (0/absent = off). Stateless like all scoring (lose a point, lose the bonus the same turn); exposed to strategies as `map_info.bonus_hold_all`; authorable in the editor's Map Settings; the HUD names the prize and who's collecting it. Shipped live on Heart Chambers (+50). *Revision 5 (v0.0.21): implemented per the user's "per map" decision — the hold-all form is the requirement's own example; further objective types wait until a map design needs one.* | ✅ |
 | SCO-04 | Highest score at match end wins. Ties break by: (1) bots alive, (2) AZN banked, (3) lowest player number. ("Turns elapsed" was dropped — it is not a per-player value and can never discriminate.) | ✅ |
 | SCO-05 | Final and per-turn scores are in the replay JSON. | ✅ |
 
@@ -188,4 +188,4 @@ What holds the fun back, in priority order:
 |---|---|
 | M1 Core engine · M2 Strategy API · M3 Playback · M4 Tournament · M5 Map editor | ✅ Done (see `docs/versioning/`) |
 | M6 **Make it a game** — GAME-01..05 (fog of war, hazards, combat counterplay, habitas exclusivity, third map) | ✅ Done (v0.0.14) |
-| M7 **Polish & spectate** — UX-01..04 done (v0.0.14); TRN-05 done (v0.0.15); MAP-08 done (v0.0.19); remaining: SCO-03 decision | 🟡 |
+| M7 **Polish & spectate** — UX-01..04 (v0.0.14); TRN-05 (v0.0.15); MAP-08 (v0.0.19); SCO-03 (v0.0.21) | ✅ Done — every planned milestone is complete |

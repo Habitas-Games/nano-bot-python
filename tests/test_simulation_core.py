@@ -1053,3 +1053,66 @@ class TestStrategyFailureEvents:
                 pass
         events = self._run_one_strategy_turn(Fine())
         assert events == []
+
+
+class TestHoldAllBonus:
+    """SCO-03: per-map bonus while ONE player owns every Habitas Point."""
+
+    def _sim_with_bonus(self, bonus=50):
+        sim = make_sim()
+        sim._map.bonus_hold_all = bonus
+        sim._habitas_state = [
+            {"position": (2, 2), "owner": -1, "azn_stored": 0},
+            {"position": (7, 7), "owner": -1, "azn_stored": 0},
+        ]
+        return sim
+
+    def _plant_needle(self, sim, owner, pos):
+        needle = sim.spawn_bot(owner, "NanoNeedle", pos)
+        return needle
+
+    def test_holding_all_points_earns_the_bonus(self):
+        sim = self._sim_with_bonus(50)
+        self._plant_needle(sim, 0, (2, 2))
+        self._plant_needle(sim, 0, (7, 7))
+        sim._update_scores()
+        assert sim._scores[0] == 5 + 5 + 50
+        assert sim._scores[1] == 0
+
+    def test_partial_hold_earns_nothing_extra(self):
+        sim = self._sim_with_bonus(50)
+        self._plant_needle(sim, 0, (2, 2))
+        sim._update_scores()
+        assert sim._scores[0] == 5
+
+    def test_split_ownership_earns_no_one_the_bonus(self):
+        sim = self._sim_with_bonus(50)
+        self._plant_needle(sim, 0, (2, 2))
+        self._plant_needle(sim, 1, (7, 7))
+        sim._update_scores()
+        assert sim._scores[0] == 5
+        assert sim._scores[1] == 5
+
+    def test_bonus_vanishes_when_a_needle_dies(self):
+        sim = self._sim_with_bonus(50)
+        self._plant_needle(sim, 0, (2, 2))
+        n2 = self._plant_needle(sim, 0, (7, 7))
+        sim._update_scores()
+        assert sim._scores[0] == 60
+        n2.is_alive = False
+        sim._update_scores()
+        assert sim._scores[0] == 5  # stateless recompute, same turn
+
+    def test_zero_bonus_maps_are_unchanged(self):
+        sim = self._sim_with_bonus(0)
+        self._plant_needle(sim, 0, (2, 2))
+        self._plant_needle(sim, 0, (7, 7))
+        sim._update_scores()
+        assert sim._scores[0] == 10
+
+    def test_map_with_no_habitas_gives_no_bonus(self):
+        sim = make_sim()
+        sim._map.bonus_hold_all = 50
+        sim._habitas_state = []
+        sim._update_scores()
+        assert sim._scores[0] == 0

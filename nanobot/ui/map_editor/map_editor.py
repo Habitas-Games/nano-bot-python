@@ -134,6 +134,7 @@ class MapEditorScreen:
         self.sidebar.on_undo = self._undo
         self.sidebar.on_redo = self._redo
         self.sidebar.on_azn_delta = self._change_starting_azn
+        self.sidebar.on_bonus_delta = self._change_bonus
 
         self._load_default_map()
         self.activate_tool("terrain")
@@ -225,6 +226,15 @@ class MapEditorScreen:
         self.history.save_state(self.doc)
         self.doc.starting_azn = new_value
         self.status_text = f"Starting AZN: {new_value}"
+
+    def _change_bonus(self, delta: int) -> None:
+        new_value = max(0, min(500, self.doc.bonus_hold_all + delta))
+        if new_value == self.doc.bonus_hold_all:
+            return
+        self.history.save_state(self.doc)
+        self.doc.bonus_hold_all = new_value
+        self.status_text = (f"Hold-all bonus: +{new_value}/turn while one player holds every Habitas Point"
+                            if new_value else "Hold-all bonus: off")
 
     def _start_new_map_flow(self) -> None:
         if self._is_dirty():
@@ -511,8 +521,9 @@ class MapEditorScreen:
         # found via the v0.0.15 QA screenshots.
         self.sidebar.set_undo_enabled(self.history.can_undo())
         self.sidebar.set_redo_enabled(self.history.can_redo())
-        # Same per-frame sync: undo can also change starting_azn.
+        # Same per-frame sync: undo can also change starting_azn/bonus.
         self.sidebar.set_starting_azn(self.doc.starting_azn)
+        self.sidebar.set_bonus(self.doc.bonus_hold_all)
         self.sidebar.draw(surface)
 
         # Drawn last, after the sidebar, so it's never painted over —

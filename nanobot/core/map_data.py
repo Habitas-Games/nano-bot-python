@@ -47,6 +47,11 @@ class MapData:
         self.width = width
         self.height = height
         self.starting_azn: int = 150
+        # SCO-03: extra points per turn while ONE player holds every
+        # Habitas Point on the map (0 = no bonus). Per-turn and stateless
+        # like all scoring — recomputed from live state, so losing any
+        # point drops the bonus the same turn.
+        self.bonus_hold_all: int = 0
         self.habitas_points: list[tuple[int, int]] = []
         self.azn_nodes: list[dict] = []  # {"position": (x, y), "quantity": int}
         self.injection_zones: list[dict] = []  # {"player": int, "rect": (x, y, w, h)}

@@ -5426,6 +5426,7 @@
 			"density": "bone"
 		}
 	],
+	"bonus_hold_all": 50,
 	"habitas_points": [
 		{
 			"x": 29,

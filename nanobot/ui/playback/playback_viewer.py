@@ -536,6 +536,9 @@ class PlaybackViewer:
         y += 20
         layout["score_rows"] = y
         y += num_rows * 20
+        if self.map is not None and self.map.bonus_hold_all > 0:
+            layout["bonus"] = y
+            y += 18
         layout["winner"] = y  # reserved unconditionally so the legend below never shifts
         y += 22
         layout["legend_header"] = y
@@ -1118,6 +1121,19 @@ class PlaybackViewer:
             pygame.draw.rect(surface, color, (x + 12, y + 2, 10, 10))
             draw_text(surface, f"Player {pid + 1}: {score} pts  ({alive} bots alive)", (x + 28, y), size=12)
             y += 20
+
+        if "bonus" in L:
+            # SCO-03: name the prize and who (if anyone) is collecting it.
+            owners = {hp["owner"] for hp in frame["habitas_points"]}
+            n_points = len(frame["habitas_points"])
+            holder = owners.pop() if len(owners) == 1 and -1 not in owners and n_points > 0 else None
+            if holder is not None:
+                color = PLAYER_COLORS[holder % len(PLAYER_COLORS)]
+                text = f"Hold-all bonus: P{holder + 1} collecting +{self.map.bonus_hold_all}/turn!"
+            else:
+                color = (150, 155, 168)
+                text = f"Hold all {n_points} points: +{self.map.bonus_hold_all}/turn"
+            draw_text(surface, text, (x + 12, L["bonus"]), size=11, color=color)
 
         if self.current_frame == len(self.log.frames) - 1:
             draw_text(surface, f"Winner: Player {self.log.winner_id + 1}", (x + 12, L["winner"]), size=14, color=(120, 230, 140))
