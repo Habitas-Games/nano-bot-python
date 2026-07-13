@@ -79,8 +79,16 @@ strategy, not a snippet:
 - `example_combat.py` — defend()/attack, hunting enemy bots in range.
 - `example_ip_creator.py` — NanoIPCreator's open_ip(), banking AZN at a
   second injection point far from the original spawn.
-- `example_full_roster.py` — all of the above combined into one
-  competitive strategy claiming two Habitas Points.
+- `example_full_roster.py` — the two-needle economy powerhouse: claims
+  and feeds two Habitas Points to out-score a single-needle turtle,
+  deliberately defense-light so an aggressor can punish it (the
+  "economy" corner of the strategy rock-paper-scissors).
+
+The demo strategies form a loose **rock-paper-scissors**: aggression
+(`example_combat`) beats the greedy two-needle economy
+(`example_full_roster`), which out-scores turtle defense
+(`example_defense`), which walls out aggression. No single demo beats
+the whole field — see `docs/versioning/v0.0.26/`.
 
 ## CLI tools
 
