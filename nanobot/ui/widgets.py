@@ -326,6 +326,25 @@ def _basename(path: str) -> str:
     return path.replace("\\", "/").rsplit("/", 1)[-1]
 
 
+def _ask_directory(initial: str) -> str | None:
+    """Open the OS folder picker (tkinter). Returns the chosen absolute
+    path, "" if the user cancelled, or None if no dialog is available
+    (headless / tkinter missing) — callers fall back to typed paths.
+    Module-level so tests can monkeypatch it."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askdirectory(initialdir=initial, title="Choose folder")
+        root.destroy()
+        return path or ""
+    except Exception as e:
+        print(f"OS folder dialog unavailable ({e}); type the path instead")
+        return None
+
+
 class FileBrowserModal:
     """A navigable file browser modal: shows the current folder's
     subdirectories plus files matching the given extensions, click a
@@ -353,6 +372,12 @@ class FileBrowserModal:
         self._row_rects: list[tuple[pygame.Rect, str, bool]] = []  # (rect, path, is_dir)
         self._confirm_rect: pygame.Rect | None = None
         self._cancel_rect: pygame.Rect | None = None
+        self._folder_rect: pygame.Rect | None = None
+        self._path_rect: pygame.Rect | None = None
+        # Click the path line to type/paste a folder directly — the
+        # keyboard-only fallback when the OS dialog isn't available.
+        self._editing_path = False
+        self._path_buffer = ""
 
     @property
     def is_open(self) -> bool:
@@ -370,6 +395,8 @@ class FileBrowserModal:
         self._selected = set()
         self._scroll = 0
         self._filter = ""
+        self._editing_path = False
+        self._path_buffer = ""
 
     def close(self) -> None:
         self._on_select = None
@@ -410,10 +437,41 @@ class FileBrowserModal:
         if on_select and paths:
             on_select(paths)
 
+    def _navigate_to(self, path: str) -> bool:
+        path = os.path.abspath(os.path.expanduser(path))
+        if not os.path.isdir(path):
+            return False
+        self._dir = path
+        self._scroll = 0
+        self._filter = ""
+        return True
+
+    def _open_os_dialog(self) -> None:
+        chosen = _ask_directory(self._dir)
+        if chosen:
+            self._navigate_to(chosen)
+        elif chosen is None:
+            # No dialog on this system — drop into typed-path mode so the
+            # button still leads somewhere useful.
+            self._editing_path = True
+            self._path_buffer = self._dir
+
     def handle_event(self, event: "pygame.event.Event") -> bool:
         if not self.is_open:
             return False
         if event.type == pygame.KEYDOWN:
+            if self._editing_path:
+                if event.key == pygame.K_RETURN:
+                    if self._navigate_to(self._path_buffer):
+                        self._editing_path = False
+                    # not a dir: stay in edit mode so the user can fix it
+                elif event.key == pygame.K_ESCAPE:
+                    self._editing_path = False
+                elif event.key == pygame.K_BACKSPACE:
+                    self._path_buffer = self._path_buffer[:-1]
+                elif event.unicode and event.unicode.isprintable() and len(self._path_buffer) < 200:
+                    self._path_buffer += event.unicode
+                return True
             if event.key == pygame.K_ESCAPE:
                 # First Esc clears an active filter; second closes.
                 if self._filter:
@@ -434,6 +492,14 @@ class FileBrowserModal:
             self._scroll = max(0, self._scroll - event.y * 2)
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._folder_rect and self._folder_rect.collidepoint(event.pos):
+                self._open_os_dialog()
+                return True
+            if self._path_rect and self._path_rect.collidepoint(event.pos):
+                self._editing_path = True
+                self._path_buffer = self._dir
+                return True
+            self._editing_path = False
             if self._confirm_rect and self._confirm_rect.collidepoint(event.pos) \
                     and self._multi and self._selected:
                 self._finish(sorted(self._selected))
@@ -482,16 +548,29 @@ class FileBrowserModal:
 
         draw_text(surface, self._title, (box_x + 16, box_y + 12), size=14)
         font12 = get_font(12)
-        path_label = self._shorten(self._dir, box_w - 32 - (150 if self._filter else 0), font12)
-        draw_text(surface, path_label, (box_x + 16, box_y + 34), size=12, color=(150, 155, 168))
-        if self._filter:
-            flt = f"filter: {self._filter}  (Esc clears)"
-            fw = font12.size(flt)[0]
-            draw_text(surface, flt, (box_x + box_w - 16 - fw, box_y + 34), size=12, color=(200, 190, 120))
+        self._path_rect = pygame.Rect(box_x + 12, box_y + 31, box_w - 24 - (150 if self._filter else 100), 19)
+        if self._editing_path:
+            pygame.draw.rect(surface, (20, 22, 30), self._path_rect)
+            pygame.draw.rect(surface, (120, 180, 130), self._path_rect, width=1)
+            shown = self._shorten(self._path_buffer + "_", self._path_rect.width - 10, font12)
+            draw_text(surface, shown, (self._path_rect.x + 5, self._path_rect.y + 2), size=12, color=(220, 224, 235))
+            draw_text(surface, "Enter to go, Esc cancels", (box_x + box_w - 16 - font12.size("Enter to go, Esc cancels")[0], box_y + 34),
+                      size=12, color=(150, 190, 160))
         else:
-            hint = "type to filter"
-            hw = get_font(10).size(hint)[0]
-            draw_text(surface, hint, (box_x + box_w - 16 - hw, box_y + 36), size=10, color=(110, 114, 128))
+            hovered_path = self._path_rect.collidepoint(pygame.mouse.get_pos())
+            if hovered_path:
+                pygame.draw.rect(surface, (44, 47, 58), self._path_rect, border_radius=3)
+            path_label = self._shorten(self._dir, self._path_rect.width - 10, font12)
+            draw_text(surface, path_label, (self._path_rect.x + 5, self._path_rect.y + 2), size=12,
+                      color=(190, 195, 210) if hovered_path else (150, 155, 168))
+            if self._filter:
+                flt = f"filter: {self._filter}  (Esc clears)"
+                fw = font12.size(flt)[0]
+                draw_text(surface, flt, (box_x + box_w - 16 - fw, box_y + 34), size=12, color=(200, 190, 120))
+            else:
+                hint = "click path to edit | type to filter"
+                hw = get_font(10).size(hint)[0]
+                draw_text(surface, hint, (box_x + box_w - 16 - hw, box_y + 36), size=10, color=(110, 114, 128))
 
         list_top = box_y + 56
         footer_h = 44
@@ -525,10 +604,18 @@ class FileBrowserModal:
         self._row_rects = rows
 
         if max_scroll > 0:
+            # x offset clears the Folder... button that lives at the
+            # footer's left edge.
             draw_text(surface, f"{self._scroll + 1}-{min(len(entries), self._scroll + visible)} of {len(entries)} (scroll)",
-                      (box_x + 16, box_y + box_h - footer_h + 16), size=10, color=(120, 124, 138))
+                      (box_x + 120, box_y + box_h - footer_h + 16), size=10, color=(120, 124, 138))
             FilePickerModal._draw_scrollbar(surface, box_x + box_w - 10, list_top,
                                             visible * self.ROW_H, self._scroll, visible, len(entries))
+
+        folder = Button((box_x + 16, box_y + box_h - 38, 92, 28), "Folder...",
+                        tooltip="Pick a folder with the system dialog (or click the path above to type one)")
+        folder.hovered = folder.rect.collidepoint(mouse)
+        folder.draw(surface)
+        self._folder_rect = folder.rect
 
         self._confirm_rect = None
         if self._multi:
@@ -542,3 +629,4 @@ class FileBrowserModal:
         cancel.hovered = cancel.rect.collidepoint(mouse)
         cancel.draw(surface)
         self._cancel_rect = cancel.rect
+        draw_hover_tooltips(surface, [folder])
