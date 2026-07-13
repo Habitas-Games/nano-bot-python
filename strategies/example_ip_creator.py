@@ -21,13 +21,14 @@ from nanobot.api.bot_proxy import BotProxy
 from nanobot.api.habitas_point_info import HabitasPointInfo
 from nanobot.api.map_info import MapInfo
 from nanobot.api.nano_strategy import NanoStrategy
+from nanobot.api.reactive_defense import ReactiveDefenseMixin
 
 BUILD_COLLECTOR_COST = 20
 BUILD_NEEDLE_COST = 40
 BUILD_IP_CREATOR_COST = 30
 
 
-class ExampleIpCreator(NanoStrategy):
+class ExampleIpCreator(ReactiveDefenseMixin, NanoStrategy):
     def __init__(self) -> None:
         self._second_collector_spawned = False
         self._new_injection_pos: tuple[int, int] | None = None
@@ -73,8 +74,17 @@ class ExampleIpCreator(NanoStrategy):
             if adj != (-1, -1):
                 nano_ai.build("NanoCollector", adj)
                 self._second_collector_spawned = True
+        elif needle is not None:
+            # Economy is built out: hand the NanoAI to reactive defense
+            # (watchtower explorer, reactive wall, garrison) so a raider
+            # can't quietly dismantle the needle. See
+            # nanobot/api/reactive_defense.py.
+            self.run_defense_ai(map_info, nano_ai, needle, my_bots)
         else:
             nano_ai.stop()
+
+        if needle is not None:
+            self.park_watchtower(map_info, my_bots, needle)
 
         # --- NanoIPCreator: walk to the second-nearest Habitas Point
         # (decided once) and register a new injection point there. ---
@@ -102,6 +112,8 @@ class ExampleIpCreator(NanoStrategy):
         # collector doesn't waste its time walking the long way home to
         # be useful for builds.
         for i, c in enumerate(collectors):
+            if self.shoot_back(map_info, c):
+                continue  # a raider is in range — fire instead of hauling AZN
             nearest_azn = self._nearest_azn(map_info, c.position)
             if i == 1 and self._new_injection_pos is not None:
                 deliver_target = self._new_injection_pos

@@ -21,6 +21,7 @@ from nanobot.api.bot_proxy import BotProxy
 from nanobot.api.habitas_point_info import HabitasPointInfo
 from nanobot.api.map_info import MapInfo
 from nanobot.api.nano_strategy import NanoStrategy
+from nanobot.api.reactive_defense import ReactiveDefenseMixin
 
 BUILD_COLLECTOR_COST = 20
 BUILD_CONTAINER_COST = 25
@@ -28,7 +29,7 @@ BUILD_NEEDLE_COST = 40
 CONTAINER_HANDOFF_THRESHOLD = 20  # don't bother walking to the needle for a trivial amount
 
 
-class ExampleContainer(NanoStrategy):
+class ExampleContainer(ReactiveDefenseMixin, NanoStrategy):
     def __init__(self) -> None:
         self._container_home: tuple[int, int] | None = None
 
@@ -67,7 +68,14 @@ class ExampleContainer(NanoStrategy):
             else:
                 nano_ai.stop()
         else:
-            nano_ai.stop()
+            # Needle up: reactive defense drives the NanoAI (watchtower
+            # explorer, reactive wall on threat, garrison) — a pure
+            # container economy is otherwise a free kill for an aggressor.
+            # See nanobot/api/reactive_defense.py.
+            self.run_defense_ai(map_info, nano_ai, needle, my_bots)
+
+        if needle is not None:
+            self.park_watchtower(map_info, my_bots, needle)
 
         # --- NanoContainer: shuttles between its depot position and the
         # needle. Holds at the depot accumulating AZN from the collector;
@@ -96,6 +104,9 @@ class ExampleContainer(NanoStrategy):
         # needle if no container has been built yet. ---
 
         if collector is None:
+            return
+
+        if self.shoot_back(map_info, collector):
             return
 
         nearest_azn = self._nearest_azn(map_info, collector.position)

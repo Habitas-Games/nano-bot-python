@@ -61,7 +61,10 @@ class MyStrategy(NanoStrategy):
 ```
 
 See `strategies/example_strategy_v2.py` for a fuller example that builds
-a NanoCollector and a NanoNeedle and actually scores points.
+a NanoCollector and a NanoNeedle, scores points, and defends the needle
+against an aggressor (via the shared `ReactiveDefenseMixin` in
+`nanobot/api/reactive_defense.py` — a pure economy loop with no defense
+is a free kill for a bot-hunting opponent).
 
 Beyond those two, `strategies/` has one focused demo per bot type/mechanic
 that example_strategy_v2 doesn't touch — each is a complete, runnable
