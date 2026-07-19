@@ -55,6 +55,7 @@ BUILD_COLLECTOR_COST = 20
 BUILD_NEEDLE_COST = 40
 ATTACK_RANGE = 12          # NanoCollector reach (data/bot_types.json)
 HAZARD_GUARD_RADIUS = 18   # only bother clearing white cells this near our needles
+HAZARD_PATIENCE = 30       # give up on a hazard whose HP we haven't dented in this many turns
 EXPAND_RESERVE = 70        # bank this much before committing to a second needle
 MAX_NEEDLES = 2
 
@@ -69,6 +70,13 @@ class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
         # the bot moves, and it oscillates forever without arriving — the
         # same trap example_explorer hit in v0.0.8.
         self._claimed_node: dict[int, tuple[int, int]] = {}
+        # Hazards we've given up on: shots at them are being blocked (Bone
+        # or a NanoWall on the firing line), so firing is pure waste. Left
+        # unchecked this is catastrophic — measured 2943 blocked shots and
+        # 0 hits in one match, with the collectors never harvesting at all
+        # because clearing always outranked mining.
+        self._hazard_watch: dict[int, tuple[int, int]] = {}   # id -> (hp_when_first_seen, turn)
+        self._hazard_giveup: set[int] = set()
 
     def choose_injection_point(self, map_info: MapInfo) -> tuple[int, int]:
         return (0, 0)
@@ -175,8 +183,13 @@ class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
                     else:
                         c.move_to(target.position)
                     continue
-            if node is not None and c.position == node.position:
-                self._claimed_node.pop(c.id, None)          # arrived: free it after this haul
+            # NOTE: do NOT release the claim on arrival. Releasing it here
+            # makes the next turn re-pick, and when two nodes tie on cost
+            # (common on symmetric maps) the collector ping-pongs between
+            # them and never actually harvests — observed as a collector
+            # standing on a full node carrying 0 AZN. The claim is released
+            # automatically once the node is exhausted, because _pick_node
+            # only keeps a held node while it still has quantity.
             self._harvest(c, node)
 
     # --- the behaviour no other example has ---
@@ -186,15 +199,28 @@ class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
         """Shoot a visible white cell that is loitering near our needles.
         Hazards never respawn, so the ~15-25 turns of fire this costs buys
         a permanently safer supply line. Returns True if it fired."""
-        best, best_d = None, ATTACK_RANGE
+        best, best_d, best_id = None, ATTACK_RANGE, None
         for hz in map_info.hazards:
-            pos = hz["position"]
+            hid, pos, hp = hz.get("id"), hz["position"], hz.get("hp", 0)
+            if hid in self._hazard_giveup:
+                continue
+            # Give up on anything we're plainly not hurting: if its HP
+            # hasn't dropped after HAZARD_PATIENCE turns of us choosing it,
+            # our shots are being blocked and we're wasting the match.
+            seen_hp, since = self._hazard_watch.get(hid, (hp, map_info.turn))
+            if hp < seen_hp:
+                self._hazard_watch[hid] = (hp, map_info.turn)      # progress — keep going
+            elif map_info.turn - since > HAZARD_PATIENCE:
+                self._hazard_giveup.add(hid)
+                continue
+            else:
+                self._hazard_watch.setdefault(hid, (hp, map_info.turn))
             # only worth it if the hazard actually threatens our territory
             if not any(self._dist(pos, n.position) <= HAZARD_GUARD_RADIUS for n in needles):
                 continue
             d = self._dist(pos, collector.position)
             if d <= best_d:
-                best_d, best = d, pos
+                best_d, best, best_id = d, pos, hid
         if best is not None:
             collector.defend(best)
             return True
