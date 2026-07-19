@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy Tutorial — nano-bot</title>
+<!-- GENERATED from docs/TUTORIAL.md by tools/build_docs.py — do not edit by hand. -->
+<style>
+  :root {
+    --bg:#0d0f16; --surface:#141720; --border:#1e2230; --accent:#38e570;
+    --accent2:#407fff; --red:#ff4d40; --gold:#ffd91a; --muted:#8a8fa8;
+    --text:#d8dce8; --heading:#eceef6; --code-bg:#0a0c12; --code-bdr:#252a3a;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg);
+         color:var(--text); line-height:1.7; font-size:15px; }
+  .page { max-width:900px; margin:0 auto; padding:40px 24px 80px; }
+  header { border-bottom:1px solid var(--border); padding-bottom:28px; margin-bottom:32px; }
+  .logo { font-family:monospace; font-size:42px; color:var(--accent); font-weight:700; letter-spacing:-1px; }
+  .tagline { color:var(--muted); font-size:14px; margin-top:4px; }
+  .pill { display:inline-block; background:var(--surface); border:1px solid var(--border);
+          border-radius:99px; padding:3px 10px; font-size:12px; color:var(--muted);
+          margin-top:10px; margin-right:6px; }
+  .nav-strip { margin-bottom:32px; font-size:13px; color:var(--muted); }
+  .nav-strip a { margin-right:14px; }
+  h1 { font-size:26px; color:var(--heading); margin:44px 0 16px; }
+  h2 { font-size:19px; color:var(--heading); margin:34px 0 12px;
+       border-left:3px solid var(--accent); padding-left:12px; }
+  h3 { font-size:15px; color:var(--accent); margin:24px 0 8px;
+       text-transform:uppercase; letter-spacing:.06em; }
+  p { margin-bottom:14px; }
+  ul, ol { margin:0 0 14px 22px; }
+  li { margin-bottom:5px; }
+  a { color:var(--accent2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  strong { color:var(--heading); }
+  em { color:var(--gold); font-style:normal; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  blockquote { border-left:3px solid var(--accent2); background:var(--surface);
+               border-radius:0 6px 6px 0; padding:12px 16px; margin:20px 0; color:var(--text); }
+  blockquote p:last-child { margin-bottom:0; }
+  code { font-family:"Cascadia Code","Fira Code",monospace; font-size:13px;
+         background:var(--code-bg); border:1px solid var(--code-bdr);
+         border-radius:4px; padding:1px 6px; color:var(--accent); }
+  pre { background:var(--code-bg); border:1px solid var(--code-bdr); border-radius:8px;
+        padding:20px; overflow-x:auto; margin:16px 0 24px; line-height:1.55; }
+  pre code { background:none; border:none; padding:0; font-size:13px; color:var(--text); }
+  table { width:100%; border-collapse:collapse; margin:16px 0 28px; font-size:13px; }
+  th { background:var(--surface); color:var(--accent); font-size:11px; text-transform:uppercase;
+       letter-spacing:.06em; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
+  td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="logo">nano-bot</div>
+  <div class="tagline">Build a competitive strategy</div>
+  <span class="pill">4 stages</span><span class="pill">Every number measured</span><span class="pill">Assumes basic Python</span>
+</header>
+<div class="nav-strip"><a href="../index.html">&larr; Home</a><a href="lore.html">The briefing</a><a href="learn_to_program.html">Learn to program</a><a href="tutorial.html">Strategy tutorial</a><a href="participant_guide.html">Participant guide</a><a href="strategy_api.html">API reference</a></div>
+
+<h1>nano-bot Tutorial — build a competitive strategy in 4 stages</h1>
+<blockquote><p>Somewhere past the skin, a treatment is failing. You have 1500 turns to get the medicine where it needs to go, and you can&#x27;t pilot the swarm — you write the mind it carries in. Read the full briefing in <a href="lore.html"><code>LORE.md</code></a>; this page gets your first swarm moving.</p></blockquote>
+<p><strong>Brand new to programming?</strong> Do <a href="learn_to_program.html"><code>learn_to_program.html</code></a> first — it teaches Python from zero using the swarm. This page assumes you can read a <code>for</code> loop.</p>
+<p>Each stage is a <strong>complete, runnable strategy</strong>. Copy it into <code>strategies/my_strategy.py</code>, run it, watch it, then move to the next. Every number below was measured by actually running these files — no hand-waving.</p>
+<p>New here? Read <a href="strategy_api.html"><code>STRATEGY_API.md</code></a> first (it&#x27;s the whole API in one page). Then come back.</p>
+<p><strong>Run any stage:</strong></p>
+<pre><code>python run_headless.py --map maps/bone_maze.json \
+    --strategy_a strategies/my_strategy.py \
+    --strategy_b strategies/example_strategy.py --seed 5</code></pre>
+<p>…or launch <code>python main.py</code>, pick your file in the match window, and press <strong>Run Match</strong> to watch it.</p>
+<hr>
+<h2>Stage 1 — Score at all (plant a needle)</h2>
+<p>The minimum that puts a number on the board: walk the NanoAI to the nearest unclaimed Habitas Point and plant a NanoNeedle on it. An empty needle scores <strong>5 points per turn</strong>.</p>
+<pre><code>from nanobot.api.nano_strategy import NanoStrategy
+
+
+class MyStrategy(NanoStrategy):
+    def choose_injection_point(self, map_info):
+        return (0, 0)
+
+    def what_to_do_next(self, map_info, my_bots):
+        ai = next((b for b in my_bots if b.type == &quot;NanoAI&quot; and b.is_alive), None)
+        if ai is None:
+            return
+        if any(b.type == &quot;NanoNeedle&quot; and b.is_alive for b in my_bots):
+            return                                    # already claimed one
+        free = [h for h in map_info.habitas_points if h.owner_id == -1]
+        if not free:
+            return
+        pt = min(free, key=lambda h: abs(h.position[0] - ai.position[0])
+                                   + abs(h.position[1] - ai.position[1])).position
+        if abs(ai.position[0] - pt[0]) + abs(ai.position[1] - pt[1]) == 1:
+            if map_info.azn_bank &gt;= 40:               # NanoNeedle costs 40
+                ai.build(&quot;NanoNeedle&quot;, pt)            # build ON the point
+        else:
+            ai.move_to(pt)</code></pre>
+<p><strong>Measured: 15 points</strong> total across the three shipped maps.</p>
+<p>Two rules doing the work here: you must be <strong>exactly 1 cell away</strong> to <code>build()</code>, and the needle goes <strong>on</strong> the Habitas Point, not beside it.</p>
+<hr>
+<h2>Stage 2 — Get an economy (feed the needle)</h2>
+<p>An empty needle is 5/turn. A needle with AZN in it is <strong>20 + 2 × AZN</strong> — a full one is 220/turn. So build a NanoCollector, harvest AZN, and carry it to the needle.</p>
+<pre><code>from nanobot.api.nano_strategy import NanoStrategy
+
+
+class MyStrategy(NanoStrategy):
+    def choose_injection_point(self, map_info):
+        return (0, 0)
+
+    def what_to_do_next(self, map_info, my_bots):
+        ai     = next((b for b in my_bots if b.type == &quot;NanoAI&quot; and b.is_alive), None)
+        col    = next((b for b in my_bots if b.type == &quot;NanoCollector&quot; and b.is_alive), None)
+        needle = next((b for b in my_bots if b.type == &quot;NanoNeedle&quot; and b.is_alive), None)
+        if ai is None:
+            return
+
+        # Build order: collector first (it pays for everything), then the needle.
+        if col is None and map_info.azn_bank &gt;= 20:
+            x, y = ai.position
+            for nx, ny in ((x+1, y), (x-1, y), (x, y+1), (x, y-1)):
+                cell = map_info.get_cell(nx, ny)
+                if cell is not None and not cell.is_bone:
+                    ai.build(&quot;NanoCollector&quot;, (nx, ny))
+                    break
+        elif needle is None:
+            free = [h for h in map_info.habitas_points if h.owner_id == -1]
+            if free:
+                pt = min(free, key=lambda h: abs(h.position[0] - ai.position[0])
+                                           + abs(h.position[1] - ai.position[1])).position
+                if abs(ai.position[0] - pt[0]) + abs(ai.position[1] - pt[1]) == 1:
+                    if map_info.azn_bank &gt;= 40:
+                        ai.build(&quot;NanoNeedle&quot;, pt)
+                else:
+                    ai.move_to(pt)
+
+        # Collector loop: haul AZN to the needle, else go mine more.
+        if col is not None:
+            node = min((n for n in map_info.azn_nodes if n.quantity &gt; 0),
+                       key=lambda n: abs(n.position[0] - col.position[0])
+                                   + abs(n.position[1] - col.position[1]), default=None)
+            if needle is not None and col.azn &gt;= 10:
+                if col.position == needle.position:
+                    col.transfer_to(needle.position)   # must be STANDING on it
+                else:
+                    col.move_to(needle.position)
+            elif node is not None:
+                if col.position == node.position:
+                    col.collect_from(node.position)    # must be STANDING on it
+                else:
+                    col.move_to(node.position)</code></pre>
+<p><strong>Measured: 640 points — a 43× improvement over Stage 1.</strong></p>
+<p>The golden rule to internalise: <code>collect_from()</code> and <code>transfer_to()</code> only work while the bot is <strong>standing on</strong> the target cell. There is no acting at a distance.</p>
+<hr>
+<h2>Stage 3 — Survive an attacker (the biggest jump you&#x27;ll make)</h2>
+<p>Stage 2 looks great until someone shoots it. Measured against <code>example_combat</code>:</p>
+<table><thead><tr><th></th><th>vs example_combat</th></tr></thead><tbody><tr><td>Stage 2 (no defense)</td><td><strong>0 / 24 wins</strong></td></tr><tr><td>Stage 3 (defended)</td><td><strong>20 / 24 wins</strong></td></tr></tbody></table>
+<p>A pure economy is a free kill. Defense needs three pieces working <em>together</em> — none of them works alone (measured: wall-only and shoot-only both still lose 0/24):</p>
+<ol><li><strong>Vision</strong> — a NanoExplorer (scan 30) parked on the needle. Under fog of war you only see enemies inside a friendly bot&#x27;s scan radius, and everything except the Explorer is nearly blind while a raider shoots from 12 cells away.</li><li><strong>A reactive wall</strong> — when a raider is spotted, the NanoAI drops a NanoWall on the firing line. Builds resolve <em>before</em> attacks, so the wall beats the shot.</li><li><strong>Shooting back</strong> — your collector is the only bot with a gun.</li></ol>
+<p>All three ship as a reusable mixin, so you don&#x27;t have to write the geometry:</p>
+<pre><code>from nanobot.api.nano_strategy import NanoStrategy
+from nanobot.api.reactive_defense import ReactiveDefenseMixin
+
+
+class MyStrategy(ReactiveDefenseMixin, NanoStrategy):   # &lt;-- inherit the mixin
+    def choose_injection_point(self, map_info):
+        return (0, 0)
+
+    def what_to_do_next(self, map_info, my_bots):
+        ai     = next((b for b in my_bots if b.type == &quot;NanoAI&quot; and b.is_alive), None)
+        col    = next((b for b in my_bots if b.type == &quot;NanoCollector&quot; and b.is_alive), None)
+        needle = next((b for b in my_bots if b.type == &quot;NanoNeedle&quot; and b.is_alive), None)
+        if ai is None:
+            return
+
+        if col is None and map_info.azn_bank &gt;= 20:
+            x, y = ai.position
+            for nx, ny in ((x+1, y), (x-1, y), (x, y+1), (x, y-1)):
+                cell = map_info.get_cell(nx, ny)
+                if cell is not None and not cell.is_bone:
+                    ai.build(&quot;NanoCollector&quot;, (nx, ny))
+                    break
+        elif needle is None:
+            free = [h for h in map_info.habitas_points if h.owner_id == -1]
+            if free:
+                pt = min(free, key=lambda h: abs(h.position[0] - ai.position[0])
+                                           + abs(h.position[1] - ai.position[1])).position
+                if abs(ai.position[0] - pt[0]) + abs(ai.position[1] - pt[1]) == 1:
+                    if map_info.azn_bank &gt;= 40:
+                        ai.build(&quot;NanoNeedle&quot;, pt)
+                else:
+                    ai.move_to(pt)
+        else:
+            # Needle is up: the mixin now drives the AI — it builds the
+            # watchtower, then drops reactive walls, then garrisons.
+            self.run_defense_ai(map_info, ai, needle, my_bots)
+
+        if needle is not None:
+            self.park_watchtower(map_info, my_bots, needle)   # keep vision on the needle
+
+        if col is not None:
+            if self.shoot_back(map_info, col):
+                return                                        # raider in range: fire instead
+            node = min((n for n in map_info.azn_nodes if n.quantity &gt; 0),
+                       key=lambda n: abs(n.position[0] - col.position[0])
+                                   + abs(n.position[1] - col.position[1]), default=None)
+            if needle is not None and col.azn &gt;= 10:
+                if col.position == needle.position:
+                    col.transfer_to(needle.position)
+                else:
+                    col.move_to(needle.position)
+            elif node is not None:
+                if col.position == node.position:
+                    col.collect_from(node.position)
+                else:
+                    col.move_to(node.position)</code></pre>
+<p>That single change takes you from <em>never</em> beating an aggressor to beating it ~83% of the time.</p>
+<p><strong>The honest trade-off:</strong> in a <em>peaceful</em> match Stage 3 scores slightly less than Stage 2 (measured: 590 vs 640) — the watchtower and walls cost AZN that would otherwise be sitting in your needle. You&#x27;re buying insurance. It&#x27;s worth it against anything that shoots, which is why the reflex only spends on walls when a raider is actually spotted rather than keeping a permanent fortification up.</p>
+<hr>
+<h2>Stage 4 — Compete for the top</h2>
+<p>You now have the shape of a real strategy. What separates the top of the leaderboard from the middle, roughly in order of payoff:</p>
+<p><strong>Route analysis.</strong> Every simple strategy picks targets by straight-line (Manhattan) distance. That&#x27;s only correct on open maps — with real terrain a node 9 cells away can cost <em>more</em> to reach than one 12 cells away down a clear corridor (movement costs 2/3/4 turns per cell by density, ∓2 on bloodstreams). Running your own Dijkstra over <code>map_info.get_cell(...)</code> to pick the genuinely cheapest target beats the straight-line guess. Two traps when you do: measure from a <strong>stationary</strong> origin (your needle) and <strong>commit</strong> to the chosen target, or the ranking flips every turn as your bot moves and it oscillates without ever arriving — and cache it, because you have a <strong>50 ms per turn</strong> budget.</p>
+<p><strong>Clear white cells.</strong> <code>defend()</code> works on hazards, not just enemy bots, and they never respawn. ~15–25 turns of collector fire permanently removes a patrol that would otherwise tax your supply line forever.</p>
+<p><strong>Expand — but only when safe.</strong> Two needles out-score one fortified needle (double the 20-point base). But two needles can&#x27;t both be defended, so expand only while nothing is threatening you. Expanding under pressure is exactly how a greedy economy loses to an aggressor.</p>
+<p><strong>Know the archetype cycle.</strong> Measured across full tournaments:</p>
+<pre><code>aggression  beats  greedy economy  beats  turtle defense  beats  aggression</code></pre>
+<p>There is no single best plan — pick one and cover its weakness.</p>
+<p><code>strategies/example_adaptive.py</code> implements all of the above and tops the tournament; read it once you&#x27;ve got Stage 3 working.</p>
+<hr>
+<h2>Where to go next</h2>
+<ul><li><a href="strategy_api.html"><code>STRATEGY_API.md</code></a> — complete API reference.</li><li><code>participant_guide.html</code> — mechanics in depth (fog, hazards, line-of-sight, scoring, map making).</li><li><code>strategies/</code> — one focused demo per mechanic; see the guide&#x27;s list.</li><li>Debugging: if your bots freeze, check the match window&#x27;s <strong>Events</strong> panel — crashes and 50 ms overruns are reported there with the exception.</li></ul>
+<hr>
+<p style="color:var(--muted);font-size:13px;text-align:center">
+  nano-bot &mdash; Habitas Games &middot;
+  <a href="TUTORIAL.md">view the markdown source</a>
+</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy API — nano-bot</title>
+<!-- GENERATED from docs/STRATEGY_API.md by tools/build_docs.py — do not edit by hand. -->
+<style>
+  :root {
+    --bg:#0d0f16; --surface:#141720; --border:#1e2230; --accent:#38e570;
+    --accent2:#407fff; --red:#ff4d40; --gold:#ffd91a; --muted:#8a8fa8;
+    --text:#d8dce8; --heading:#eceef6; --code-bg:#0a0c12; --code-bdr:#252a3a;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg);
+         color:var(--text); line-height:1.7; font-size:15px; }
+  .page { max-width:900px; margin:0 auto; padding:40px 24px 80px; }
+  header { border-bottom:1px solid var(--border); padding-bottom:28px; margin-bottom:32px; }
+  .logo { font-family:monospace; font-size:42px; color:var(--accent); font-weight:700; letter-spacing:-1px; }
+  .tagline { color:var(--muted); font-size:14px; margin-top:4px; }
+  .pill { display:inline-block; background:var(--surface); border:1px solid var(--border);
+          border-radius:99px; padding:3px 10px; font-size:12px; color:var(--muted);
+          margin-top:10px; margin-right:6px; }
+  .nav-strip { margin-bottom:32px; font-size:13px; color:var(--muted); }
+  .nav-strip a { margin-right:14px; }
+  h1 { font-size:26px; color:var(--heading); margin:44px 0 16px; }
+  h2 { font-size:19px; color:var(--heading); margin:34px 0 12px;
+       border-left:3px solid var(--accent); padding-left:12px; }
+  h3 { font-size:15px; color:var(--accent); margin:24px 0 8px;
+       text-transform:uppercase; letter-spacing:.06em; }
+  p { margin-bottom:14px; }
+  ul, ol { margin:0 0 14px 22px; }
+  li { margin-bottom:5px; }
+  a { color:var(--accent2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  strong { color:var(--heading); }
+  em { color:var(--gold); font-style:normal; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  blockquote { border-left:3px solid var(--accent2); background:var(--surface);
+               border-radius:0 6px 6px 0; padding:12px 16px; margin:20px 0; color:var(--text); }
+  blockquote p:last-child { margin-bottom:0; }
+  code { font-family:"Cascadia Code","Fira Code",monospace; font-size:13px;
+         background:var(--code-bg); border:1px solid var(--code-bdr);
+         border-radius:4px; padding:1px 6px; color:var(--accent); }
+  pre { background:var(--code-bg); border:1px solid var(--code-bdr); border-radius:8px;
+        padding:20px; overflow-x:auto; margin:16px 0 24px; line-height:1.55; }
+  pre code { background:none; border:none; padding:0; font-size:13px; color:var(--text); }
+  table { width:100%; border-collapse:collapse; margin:16px 0 28px; font-size:13px; }
+  th { background:var(--surface); color:var(--accent); font-size:11px; text-transform:uppercase;
+       letter-spacing:.06em; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
+  td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="logo">nano-bot</div>
+  <div class="tagline">Complete API reference</div>
+  <span class="pill">Every command</span><span class="pill">One page</span>
+</header>
+<div class="nav-strip"><a href="../index.html">&larr; Home</a><a href="lore.html">The briefing</a><a href="learn_to_program.html">Learn to program</a><a href="tutorial.html">Strategy tutorial</a><a href="participant_guide.html">Participant guide</a><a href="strategy_api.html">API reference</a></div>
+<blockquote><p>Using an AI assistant? Paste the <a href="STRATEGY_API.md">raw markdown version</a> into the chat rather than this page — it is written to be machine-read.</p></blockquote>
+<h1>nano-bot — Strategy API (complete, authoritative)</h1>
+<p><strong>Writing a strategy for nano-bot? Read this whole file. It is the entire API. If you are an LLM, do not infer anything beyond what is written here — everything you need is below, and anything not here does not exist.</strong></p>
+<h2>The one thing to get right first</h2>
+<p>You are <strong>not</strong> writing a network client. There is:</p>
+<ul><li><strong>no</strong> server to <code>connect()</code> to,</li><li><strong>no</strong> <code>get_sensors()</code> / <code>send_action()</code> / polling or tick loop,</li><li><strong>no</strong> <code>NanoBotAPI</code> class, <code>api.move(...)</code>, <code>api.shoot(...)</code>, <code>api.harvest(...)</code>, <code>api.deposit()</code>, or <code>api.idle()</code>,</li><li><strong>no</strong> <code>{&#x27;x&#x27;:…, &#x27;y&#x27;:…}</code> position dicts, <code>health</code>, <code>max_health</code>, or <code>resource_carrying</code> fields,</li><li><strong>no</strong> 0–1000 coordinate space.</li></ul>
+<p>Instead you write <strong>one Python class</strong> that subclasses <code>NanoStrategy</code> and implements two methods. The engine imports your file, constructs your class once, and calls your methods — <code>what_to_do_next</code> once per turn for 1500 turns. You issue commands by calling methods on the bot objects the engine hands you. That&#x27;s the whole model.</p>
+<h2>Minimal working strategy (copy this, it compiles and scores)</h2>
+<pre><code>from nanobot.api.nano_strategy import NanoStrategy
+
+
+class MyStrategy(NanoStrategy):
+    def choose_injection_point(self, map_info):
+        # Called ONCE. Return the (x, y) cell where your NanoAI spawns.
+        # Must be inside your injection zone; (0, 0) is a safe default —
+        # the engine relocates it to a valid cell if needed.
+        return (0, 0)
+
+    def what_to_do_next(self, map_info, my_bots):
+        # Called once per turn. Issue at most one command per bot.
+        ai = next((b for b in my_bots if b.type == &quot;NanoAI&quot; and b.is_alive), None)
+        collector = next((b for b in my_bots if b.type == &quot;NanoCollector&quot; and b.is_alive), None)
+        needle = next((b for b in my_bots if b.type == &quot;NanoNeedle&quot; and b.is_alive), None)
+        if ai is None:
+            return
+
+        # 1) Build a collector next to the AI.
+        if collector is None and map_info.azn_bank &gt;= 20:
+            x, y = ai.position
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                cell = map_info.get_cell(nx, ny)
+                if cell is not None and not cell.is_bone:
+                    ai.build(&quot;NanoCollector&quot;, (nx, ny))
+                    break
+
+        # 2) Walk the AI to the NEAREST unclaimed Habitas Point and plant
+        #    a needle on it. (Nearest, not habitas_points[0] — the first
+        #    in the list can be across the map.)
+        elif needle is None:
+            unclaimed = [hp for hp in map_info.habitas_points if hp.owner_id == -1]
+            if unclaimed:
+                point = min(unclaimed, key=lambda hp:
+                            abs(hp.position[0] - ai.position[0])
+                            + abs(hp.position[1] - ai.position[1])).position
+                if abs(ai.position[0] - point[0]) + abs(ai.position[1] - point[1]) == 1:
+                    if map_info.azn_bank &gt;= 40:
+                        ai.build(&quot;NanoNeedle&quot;, point)
+                else:
+                    ai.move_to(point)
+
+        # 3) Collector: harvest AZN, deliver it to the needle to score.
+        if collector is not None:
+            node = min((n for n in map_info.azn_nodes if n.quantity &gt; 0),
+                       key=lambda n: abs(n.position[0] - collector.position[0])
+                                   + abs(n.position[1] - collector.position[1]), default=None)
+            if needle is not None and collector.azn &gt;= 10:
+                if collector.position == needle.position:
+                    collector.transfer_to(needle.position)   # standing ON it
+                else:
+                    collector.move_to(needle.position)
+            elif node is not None:
+                if collector.position == node.position:
+                    collector.collect_from(node.position)     # standing ON it
+                else:
+                    collector.move_to(node.position)</code></pre>
+<p><strong>Rules for the file:</strong> exactly one <code>NanoStrategy</code> subclass per file (loading fails if there are zero or more than one). Put it anywhere under <code>strategies/</code> as a <code>.py</code> file. The class name can be anything.</p>
+<h2>The two methods you implement</h2>
+<pre><code>choose_injection_point(self, map_info) -&gt; (x, y)      # once, at match start
+what_to_do_next(self, map_info, my_bots) -&gt; None      # once per turn (1500 turns)</code></pre>
+<ul><li><code>map_info</code> is a <code>MapInfo</code> (below). <code>my_bots</code> is a <code>list</code> of your live <code>BotProxy</code> objects (below).</li><li>You act by calling command methods on bots. Returning does nothing special — there is no action object to return.</li><li><strong>One command per bot per turn — the last call wins.</strong> Calling <code>bot.move_to(...)</code> then <code>bot.defend(...)</code> on the same bot leaves only the <code>defend</code>. Re-issuing the same command every turn is fine and idiomatic (<code>move_to</code> caches its path).</li><li>Your <code>what_to_do_next</code> has a <strong>50 ms</strong> budget per turn; overrunning or raising forfeits that turn (it won&#x27;t crash the match, but you lose the turn — visible in the match window&#x27;s Events panel).</li></ul>
+<h2>BotProxy — your bots (read state, issue commands)</h2>
+<p>Read-only properties:</p>
+<table><thead><tr><th>property</th><th>type</th><th>meaning</th></tr></thead><tbody><tr><td><code>bot.id</code></td><td>int</td><td>unique id</td></tr><tr><td><code>bot.type</code></td><td>str</td><td>one of the 8 type names below</td></tr><tr><td><code>bot.position</code></td><td><code>(x, y)</code> int tuple</td><td>current cell</td></tr><tr><td><code>bot.hp</code></td><td>int</td><td>current health</td></tr><tr><td><code>bot.max_hp</code></td><td>int</td><td>max health</td></tr><tr><td><code>bot.azn</code></td><td>int</td><td>AZN currently carried</td></tr><tr><td><code>bot.is_alive</code></td><td>bool</td><td></td></tr><tr><td><code>bot.is_moving</code></td><td>bool</td><td>mid-move (has a movement cooldown)</td></tr><tr><td><code>bot.has_path</code></td><td>bool</td><td>has a cached path to a destination</td></tr></tbody></table>
+<p>Command methods (call at most one per bot per turn; <strong>all positions are <code>(x, y)</code> int tuples</strong>):</p>
+<table><thead><tr><th>method</th><th>what it does</th></tr></thead><tbody><tr><td><code>bot.move_to((x, y))</code></td><td>pathfind toward the cell and step along it</td></tr><tr><td><code>bot.collect_from((x, y))</code></td><td>harvest AZN — <strong>you must be standing on that AZN node</strong></td></tr><tr><td><code>bot.transfer_to((x, y))</code></td><td>deposit AZN into a friendly bot with capacity (needle/container/collector) <strong>you are standing on</strong>, or into your bank if you&#x27;re standing in any of your injection zones</td></tr><tr><td><code>bot.defend((x, y))</code></td><td>attack that cell — <strong>NanoCollector only</strong>, range 12 (Euclidean), 1–5 damage, blocked by Bone and by any alive NanoWall on the line of sight</td></tr><tr><td><code>bot.build(&quot;TypeName&quot;, (x, y))</code></td><td><strong>NanoAI only</strong> — build a bot on a passable cell <strong>exactly 1 step away</strong> (Manhattan distance 1); costs AZN from your bank, appears the same turn</td></tr><tr><td><code>bot.open_ip()</code></td><td><strong>NanoIPCreator only</strong> — register a permanent new injection point at its current cell</td></tr><tr><td><code>bot.stop()</code></td><td>cancel movement / do nothing this turn</td></tr><tr><td><code>bot.self_destruct()</code></td><td>destroy this bot</td></tr></tbody></table>
+<p><strong>The golden rule:</strong> <code>collect_from</code> and <code>transfer_to</code> only work when the bot is <strong>standing on the target cell</strong>. There is no acting at a distance — <code>move_to</code> there first, then issue the command each turn until done.</p>
+<h2>MapInfo — the map snapshot passed to your methods</h2>
+<table><thead><tr><th>property</th><th>type</th><th>meaning</th></tr></thead><tbody><tr><td><code>map_info.size</code></td><td><code>(width, height)</code></td><td>grid dimensions (shipped maps are 50×50 and 60×60)</td></tr><tr><td><code>map_info.turn</code></td><td>int</td><td>current turn (1–1500)</td></tr><tr><td><code>map_info.azn_bank</code></td><td>int</td><td><strong>your</strong> build budget (AZN available to <code>build</code>)</td></tr><tr><td><code>map_info.bonus_hold_all</code></td><td>int</td><td>extra points/turn while you hold every Habitas Point (0 = none)</td></tr><tr><td><code>map_info.habitas_points</code></td><td>list[<code>HabitasPointInfo</code>]</td><td>all scoring points</td></tr><tr><td><code>map_info.azn_nodes</code></td><td>list[<code>AZNNodeInfo</code>]</td><td>all AZN resource nodes</td></tr><tr><td><code>map_info.visible_enemies</code></td><td>list[dict]</td><td>enemy bots within your bots&#x27; scan radius — each <code>{&quot;id&quot;, &quot;type&quot;, &quot;position&quot;, &quot;hp&quot;}</code> (fog of war: only what you can see)</td></tr><tr><td><code>map_info.hazards</code></td><td>list[dict]</td><td>white cells within scan — each <code>{&quot;id&quot;, &quot;position&quot;, &quot;hp&quot;}</code></td></tr><tr><td><code>map_info.get_cell(x, y)</code></td><td><code>CellInfo</code> or <code>None</code></td><td>terrain at a cell (<code>None</code> if out of bounds)</td></tr></tbody></table>
+<p><code>HabitasPointInfo</code>: <code>.position (x,y)</code>, <code>.owner_id</code> (int, <code>-1</code> = unclaimed), <code>.azn_stored</code> (int). <code>AZNNodeInfo</code>: <code>.position (x,y)</code>, <code>.quantity</code> (int). <code>CellInfo</code>: <code>.position (x,y)</code>, <code>.is_bone</code> (bool — impassable), <code>.density</code>, <code>.stream_direction</code>.</p>
+<p>Note <code>visible_enemies</code> / <code>hazards</code> elements are <strong>dicts</strong> (use <code>enemy[&quot;position&quot;]</code>), while <code>habitas_points</code> / <code>azn_nodes</code> elements are <strong>objects</strong> (use <code>hp.position</code>).</p>
+<h2>The 8 bot types (stats from data/bot_types.json)</h2>
+<table><thead><tr><th>Type</th><th>Cost</th><th>HP</th><th>Key stats</th><th>Role</th></tr></thead><tbody><tr><td>NanoAI</td><td>— (spawns free)</td><td>20</td><td>scan 5</td><td>The only bot that can <code>build()</code>. If it dies you can never build again. Protect it.</td></tr><tr><td>NanoExplorer</td><td>15</td><td>20</td><td>scan 30, ignores tissue density</td><td>Fast scout / eyes under fog. Can&#x27;t collect, attack, or build.</td></tr><tr><td>NanoCollector</td><td>20</td><td>50</td><td>capacity 20, transfer 5/turn, <strong>attack: 1–5 dmg, range 12</strong></td><td>Harvests AZN, delivers it, and is the only bot that can shoot.</td></tr><tr><td>NanoContainer</td><td>25</td><td>60</td><td>capacity 60, transfer 5/turn</td><td>Mobile storage for long supply relays. No attack.</td></tr><tr><td>NanoNeedle</td><td>40</td><td>150</td><td>capacity 100, <strong>stationary</strong></td><td>Plant ON a Habitas Point to score. Cannot move.</td></tr><tr><td>NanoIPCreator</td><td>30</td><td>20</td><td>scan 30, expires after 500 turns</td><td><code>open_ip()</code> makes a permanent new injection point.</td></tr><tr><td>NanoBlocker</td><td>20</td><td>90</td><td>+6 turn traversal penalty</td><td>Roadblock on a chokepoint.</td></tr><tr><td>NanoWall</td><td>25</td><td>100</td><td>expires after 50 turns</td><td>Blocks enemy movement <strong>and all shots</strong> through its cell.</td></tr></tbody></table>
+<p>Every player starts with one NanoAI and a starting AZN budget (150 by default). Build everything else with <code>NanoAI.build(...)</code>.</p>
+<h2>Scoring</h2>
+<p>Computed every turn from live state; the winner is decided at turn 1500 (or when only one side has bots left) by the score at that moment.</p>
+<ul><li>A NanoNeedle on a Habitas Point with 0 AZN: <strong>5 points/turn</strong>.</li><li>A NanoNeedle with AZN: <strong>20 + 2 × (AZN stored) points/turn</strong>.</li><li>So feeding a needle is the whole game: 40 AZN inside = 100 pts/turn.</li><li>Some maps add <code>map_info.bonus_hold_all</code> while you hold every point.</li></ul>
+<h2>Common mistakes (all of these are wrong)</h2>
+<ul><li>❌ <code>from api import NanoBotAPI</code> / a connect–sensors–action loop. ✅ Subclass <code>NanoStrategy</code>; implement the two methods above.</li><li>❌ <code>api.move(x, y)</code>, <code>api.shoot(id)</code>, <code>api.harvest(id)</code>, <code>api.deposit()</code>. ✅ <code>bot.move_to((x, y))</code>, <code>bot.defend((x, y))</code>, <code>bot.collect_from((x, y))</code>, <code>bot.transfer_to((x, y))</code>.</li><li>❌ <code>pos[&#x27;x&#x27;]</code>, <code>bot[&#x27;health&#x27;]</code>. ✅ <code>pos[0]</code>/<code>pos[1]</code> tuples, <code>bot.hp</code>/<code>bot.azn</code>.</li><li>❌ shooting by enemy id or at range 250. ✅ <code>defend((x, y))</code> at a cell, range 12, collectors only, needs line of sight.</li><li>❌ collecting/depositing from a distance. ✅ stand on the cell first.</li><li>❌ coordinates up to 1000. ✅ <code>0 .. map_info.size[0]-1</code>.</li></ul>
+<p>That&#x27;s the entire API. Study <code>strategies/example_strategy_v2.py</code> for a complete, competitive example.</p>
+<hr>
+<p style="color:var(--muted);font-size:13px;text-align:center">
+  nano-bot &mdash; Habitas Games &middot;
+  <a href="STRATEGY_API.md">view the markdown source</a>
+</p>
+</div>
+</body>
+</html>

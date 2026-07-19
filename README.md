@@ -152,6 +152,29 @@ nano-bot-python/
 └── docs/                     # requirements + versioning history
 ```
 
+## Documentation
+
+Human-facing docs live in two forms, from **one source**:
+
+- **Markdown** (`docs/*.md`) is the source of truth — it renders on
+  GitHub, and `STRATEGY_API.md` must stay markdown because its job is
+  being pasted into an AI assistant.
+- **HTML** (`docs/lore.html`, `tutorial.html`, `strategy_api.html`) is
+  what the website links to, because a browser shows raw `.md` as
+  unstyled text.
+
+The HTML is generated — never hand-edit it:
+
+```bash
+python tools/build_docs.py            # regenerate after editing any docs/*.md
+python tools/build_docs.py --check    # fails if the HTML is stale
+```
+
+`tests/test_docs_build.py` runs that check, so editing markdown and
+forgetting to rebuild fails the suite instead of silently shipping a
+stale site. (`participant_guide.html` and `learn_to_program.html` are
+hand-written HTML, not generated.)
+
 ## Testing
 
 ```bash
