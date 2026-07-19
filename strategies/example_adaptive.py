@@ -33,6 +33,7 @@ pressure is how `example_full_roster` loses to aggression.
 
 from __future__ import annotations
 
+import heapq
 import math
 
 from nanobot.api.azn_node_info import AZNNodeInfo
@@ -41,6 +42,14 @@ from nanobot.api.habitas_point_info import HabitasPointInfo
 from nanobot.api.map_info import MapInfo
 from nanobot.api.nano_strategy import NanoStrategy
 from nanobot.api.reactive_defense import ReactiveDefenseMixin
+from nanobot.core.map_data import Density, StreamDir
+
+# Real movement costs (participant guide §4) — what a step actually costs,
+# as opposed to the straight-line guess every other example uses.
+_DENSITY_COST = {Density.LOW: 2, Density.MEDIUM: 3, Density.HIGH: 4}
+_STREAM_VEC = {StreamDir.NORTH: (0, -1), StreamDir.SOUTH: (0, 1),
+               StreamDir.EAST: (1, 0), StreamDir.WEST: (-1, 0)}
+ROUTE_CACHE_TURNS = 25     # recompute the cost field this often
 
 BUILD_COLLECTOR_COST = 20
 BUILD_NEEDLE_COST = 40
@@ -51,8 +60,69 @@ MAX_NEEDLES = 2
 
 
 class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
+    def __init__(self) -> None:
+        self._cost_from: tuple[int, int] | None = None
+        self._cost_field: dict[tuple[int, int], int] = {}
+        self._cost_turn = -999
+        # Each collector commits to a node until it's harvested/exhausted.
+        # Re-picking every turn makes two near-equal nodes swap places as
+        # the bot moves, and it oscillates forever without arriving — the
+        # same trap example_explorer hit in v0.0.8.
+        self._claimed_node: dict[int, tuple[int, int]] = {}
+
     def choose_injection_point(self, map_info: MapInfo) -> tuple[int, int]:
         return (0, 0)
+
+    # --- real route analysis (the other half of "sophisticated") ---
+
+    def _step_cost(self, map_info: MapInfo, frm: tuple[int, int],
+                   to: tuple[int, int]) -> "int | None":
+        cell = map_info.get_cell(to[0], to[1])
+        if cell is None or cell.is_bone:
+            return None
+        cost = _DENSITY_COST.get(cell.density, 2)
+        vec = _STREAM_VEC.get(cell.stream_direction)
+        if vec is not None:
+            move = (to[0] - frm[0], to[1] - frm[1])
+            if move == vec:
+                cost -= 2                      # riding the bloodstream
+            elif move == (-vec[0], -vec[1]):
+                cost += 2                      # swimming against it
+        return max(1, cost)
+
+    def _cost_map(self, map_info: MapInfo, origin: tuple[int, int]) -> dict:
+        """Dijkstra over TRUE movement cost from `origin`.
+
+        This is the whole point of the strategy: on a map with real
+        topology, straight-line distance lies — a node 9 cells away can
+        cost more to reach than one 12 cells away sitting down an open
+        corridor. Every other example picks targets by Manhattan
+        distance and therefore walks into detours. Cached for
+        ROUTE_CACHE_TURNS so it stays far inside the 50 ms turn budget
+        (a full 60x60 sweep is ~3600 cells)."""
+        if (self._cost_from == origin
+                and map_info.turn - self._cost_turn < ROUTE_CACHE_TURNS):
+            return self._cost_field
+        dist = {origin: 0}
+        pq = [(0, origin)]
+        w, h = map_info.size
+        while pq:
+            d, cur = heapq.heappop(pq)
+            if d > dist.get(cur, math.inf):
+                continue
+            cx, cy = cur
+            for nxt in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                if not (0 <= nxt[0] < w and 0 <= nxt[1] < h):
+                    continue
+                step = self._step_cost(map_info, cur, nxt)
+                if step is None:
+                    continue
+                nd = d + step
+                if nd < dist.get(nxt, math.inf):
+                    dist[nxt] = nd
+                    heapq.heappush(pq, (nd, nxt))
+        self._cost_from, self._cost_field, self._cost_turn = origin, dist, map_info.turn
+        return dist
 
     def what_to_do_next(self, map_info: MapInfo, my_bots: list[BotProxy]) -> None:
         nano_ai = self._find(my_bots, "NanoAI")
@@ -90,21 +160,24 @@ class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
             self.park_watchtower(map_info, my_bots, needles[0])
 
         # --- Collectors: fight > clear the supply line > feed > harvest ---
+        base = needles[0].position if needles else nano_ai.position
         for i, c in enumerate(collectors):
             if self.shoot_back(map_info, c):
                 continue                                   # an armed raider outranks everything
             if needles and self._clear_hazard(map_info, c, needles):
                 continue                                   # permanently de-tax the supply line
+            node = self._pick_node(map_info, c, base)
             if needles:
                 target = needles[i % len(needles)]
-                node = self._nearest_node(map_info, c.position)
                 if c.azn > 0 and (node is None or c.azn >= 10):
                     if c.position == target.position:
                         c.transfer_to(target.position)
                     else:
                         c.move_to(target.position)
                     continue
-            self._harvest(c, self._nearest_node(map_info, c.position))
+            if node is not None and c.position == node.position:
+                self._claimed_node.pop(c.id, None)          # arrived: free it after this haul
+            self._harvest(c, node)
 
     # --- the behaviour no other example has ---
 
@@ -149,20 +222,42 @@ class ExampleAdaptive(ReactiveDefenseMixin, NanoStrategy):
         else:
             collector.move_to(node.position)
 
-    @staticmethod
-    def _nearest_node(map_info: MapInfo, from_pos: tuple[int, int]) -> "AZNNodeInfo | None":
+    def _pick_node(self, map_info: MapInfo, collector: BotProxy,
+                   base: tuple[int, int]) -> "AZNNodeInfo | None":
+        """Cheapest live node by REAL path cost from our base — and then
+        stick with it. The field is measured from the (stationary) base
+        rather than the moving collector so the ranking is stable and the
+        Dijkstra caches properly (both a correctness and a turn-budget
+        fix)."""
+        live = {n.position: n for n in map_info.azn_nodes if n.quantity > 0}
+        held = self._claimed_node.get(collector.id)
+        if held is not None and held in live:
+            return live[held]                      # keep going
+        field = self._cost_map(map_info, base)
         best, best_d = None, math.inf
-        for n in map_info.azn_nodes:
-            if n.quantity == 0:
+        taken = {p for bid, p in self._claimed_node.items() if bid != collector.id}
+        for pos, n in live.items():
+            d = field.get(pos)
+            if d is None:
                 continue
-            d = abs(n.position[0] - from_pos[0]) + abs(n.position[1] - from_pos[1])
+            if pos in taken:                       # don't stack collectors on one node
+                d += 40
             if d < best_d:
                 best_d, best = d, n
+        if best is None:
+            best = next(iter(live.values()), None)
+        if best is not None:
+            self._claimed_node[collector.id] = best.position
         return best
 
     def _claim(self, nano_ai: BotProxy, map_info: MapInfo,
                unclaimed: list["HabitasPointInfo"]) -> None:
-        target = min(unclaimed, key=lambda h: self._manhattan(nano_ai.position, h.position))
+        # Claim by true travel cost too — the "nearest" point on the
+        # straight line can be the one behind a wall.
+        field = self._cost_map(map_info, nano_ai.position)
+        target = min(unclaimed,
+                     key=lambda h: field.get(h.position,
+                                             10_000 + self._manhattan(nano_ai.position, h.position)))
         if self._manhattan(nano_ai.position, target.position) == 1 \
                 and map_info.azn_bank >= BUILD_NEEDLE_COST:
             nano_ai.build("NanoNeedle", target.position)
