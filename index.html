@@ -156,6 +156,18 @@
     background: var(--surface); border-radius: 8px; border: 1px solid var(--border);
     font-size: 13px; color: var(--muted); text-align: center;
   }
+  /* ways to help that cost nothing — most people land here, not on the donate cards */
+  .support-free {
+    margin-top: 28px; padding: 22px 24px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .support-free h3 { font-size: 15px; margin-bottom: 4px; }
+  .support-free > p { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+  .support-free ul { list-style: none; display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .support-free li { font-size: 13px; color: var(--muted); display: flex; gap: 10px; }
+  .support-free li span { flex-shrink: 0; }
+  .support-free strong { color: var(--text); font-weight: 600; }
 
   /* ── modal ── */
   .modal {
@@ -611,6 +623,23 @@ class MyStrategy(NanoStrategy):
       <p>Banco Pichincha (Ecuador). Scan the QR with your banking app.</p>
       <button onclick="openDeUnaModal()" class="btn btn-secondary">View QR code</button>
     </div>
+  </div>
+
+  <div class="support-free">
+    <h3>Not in a position to donate? These help just as much.</h3>
+    <p>Most of what keeps a project like this alive isn't money — it's people using it and saying so.</p>
+    <ul>
+      <li><span>⭐</span><div><strong>Star the repository.</strong> It's the main way anyone finds
+        <a href="https://github.com/Habitas-Games/nano-bot-python">the project</a> at all.</div></li>
+      <li><span>🗣️</span><div><strong>Tell someone who'd enjoy it</strong> — a student learning to code,
+        a teacher looking for a class project, a friend who likes strategy games.</div></li>
+      <li><span>🐛</span><div><strong>Report what breaks.</strong> A clear bug report is worth more than
+        a donation — see <a href="#contribute">Contribute</a>.</div></li>
+      <li><span>🧠</span><div><strong>Share a strategy or a map you made.</strong> More competitors
+        make the tournament better for everyone.</div></li>
+      <li><span>✍️</span><div><strong>Improve the docs.</strong> If something confused you, it confused
+        the next person too — say so, or fix it.</div></li>
+    </ul>
   </div>
 
   <div class="support-note">

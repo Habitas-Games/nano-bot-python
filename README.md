@@ -177,6 +177,30 @@ forgetting to rebuild fails the suite instead of silently shipping a
 stale site. (`participant_guide.html` and `learn_to_program.html` are
 hand-written HTML, not generated.)
 
+## Supporting the project
+
+nano-bot is built and maintained as a side project — no company, no
+funding, no team. If it's been useful to you, there are two kinds of
+help, and the free kind genuinely matters more.
+
+**Costs nothing:**
+
+- ⭐ **Star the repository** — it's the main way anyone finds this at all.
+- 🗣️ **Tell someone who'd enjoy it** — a student learning to code, a
+  teacher looking for a class project, a friend who likes strategy games.
+- 🐛 **Report what breaks.** A clear bug report is worth more than a
+  donation: [open an issue](https://github.com/Habitas-Games/nano-bot-python/issues).
+- 🧠 **Share a strategy or a map you made** — more competitors make the
+  tournament better for everyone.
+- ✍️ **Improve the docs.** If something confused you it confused the next
+  person too, so either say so or fix it.
+
+**Costs money:** [GitHub Sponsors](https://github.com/sponsors/mnavas)
+(monthly or one-time) or [PayPal](https://paypal.me/warionv) (one-time).
+Contributions go toward the time it takes to keep this going.
+
+Either way — thank you. 🙏
+
 ## Testing
 
 ```bash

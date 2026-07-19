@@ -1,0 +1,4 @@
+# Drives the "Sponsor" button GitHub shows at the top of the repository.
+# Keep in sync with the support section of index.html.
+github: [mnavas]
+custom: ["https://paypal.me/warionv"]
