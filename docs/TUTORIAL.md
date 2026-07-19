@@ -5,6 +5,10 @@
 > swarm — you write the mind it carries in. Read the full briefing in
 > [`LORE.md`](LORE.md); this page gets your first swarm moving.
 
+**Brand new to programming?** Do
+[`learn_to_program.html`](learn_to_program.html) first — it teaches Python from zero
+using the swarm. This page assumes you can read a `for` loop.
+
 Each stage is a **complete, runnable strategy**. Copy it into
 `strategies/my_strategy.py`, run it, watch it, then move to the next.
 Every number below was measured by actually running these files — no

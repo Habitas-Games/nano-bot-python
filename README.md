@@ -51,7 +51,11 @@ from an infection, the bloodstream runs one way, and a rival protocol is in
 the same body racing you for the same sites. Full briefing:
 [`docs/LORE.md`](docs/LORE.md).
 
-**New?** Follow [`docs/TUTORIAL.md`](docs/TUTORIAL.md) — four runnable
+**Never programmed before?** Start with
+[`docs/learn_to_program.html`](docs/learn_to_program.html) — eight lessons teaching
+Python from zero, ending in a real strategy that wins on every shipped map.
+
+**Know Python already?** Follow [`docs/TUTORIAL.md`](docs/TUTORIAL.md) — four runnable
 stages from "plants one needle" to a strategy that beats an aggressor,
 with the measured score at every step (Stage 1 → 2 is a 43× jump;
 Stage 3 goes from 0/24 to 20/24 against `example_combat`).
@@ -155,7 +159,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-321 unit tests cover the core simulation engine and map-editor logic
+362 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real

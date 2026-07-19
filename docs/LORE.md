@@ -143,6 +143,7 @@ The window is open. Write something good.
 
 ---
 
-*New here? [`TUTORIAL.md`](TUTORIAL.md) gets you from one needle to a
+*Never written code before? [`learn_to_program.html`](learn_to_program.html) starts you
+at zero. Otherwise [`TUTORIAL.md`](TUTORIAL.md) gets you from one needle to a
 strategy that survives an attacker, in four runnable stages.
 [`STRATEGY_API.md`](STRATEGY_API.md) is the complete API on one page.*
