@@ -1,5 +1,10 @@
 # nano-bot Tutorial — build a competitive strategy in 4 stages
 
+> Somewhere past the skin, a treatment is failing. You have 1500 turns
+> to get the medicine where it needs to go, and you can't pilot the
+> swarm — you write the mind it carries in. Read the full briefing in
+> [`LORE.md`](LORE.md); this page gets your first swarm moving.
+
 Each stage is a **complete, runnable strategy**. Copy it into
 `strategies/my_strategy.py`, run it, watch it, then move to the next.
 Every number below was measured by actually running these files — no

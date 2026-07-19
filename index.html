@@ -271,6 +271,7 @@
 <nav>
   <div class="nav-logo">nano-bot-python</div>
   <div class="nav-links">
+    <a href="#briefing">Briefing</a>
     <a href="#features">Features</a>
     <a href="#bots">Bots</a>
     <a href="#start">Get started</a>
@@ -283,18 +284,91 @@
 
 <!-- ── HERO ──────────────────────────────────────────────────────────────── -->
 <section id="hero">
-  <div class="section-label">Strategy competition platform</div>
-  <h1>Program nanobots.<br>Conquer living tissue.</h1>
-  <p style="font-size:17px; max-width:580px">
-    nano-bot-python is a turn-based AI programming competition set inside a simulated human body.
-    Write a Python strategy, deploy a fleet of nanobots, and outscore your opponent by
-    claiming <span class="accent">Habitas Points</span> and delivering AZN before resources run dry.
+  <div class="section-label">A programming challenge with a patient on the table</div>
+  <h1>They're too small to pilot.<br>So you write their <span class="accent">mind</span>.</h1>
+  <p style="font-size:17px; max-width:600px">
+    A treatment is failing somewhere past the skin. The medicine has to be carried,
+    molecule by molecule, to receptor sites buried deep in living tissue — by a swarm
+    smaller than a red blood cell, in a window shorter than a held breath.
+    You can't drive them. You write the code they carry in, and then you let go.
+  </p>
+  <p style="font-size:15px; max-width:600px; color:var(--muted)">
+    The immune system doesn't know you're helping. The bloodstream only runs one way.
+    And another team's protocol is in the same body, racing you for the same sites —
+    because only one of them gets used on a real patient.
   </p>
   <div class="btn-row">
-    <a href="docs/participant_guide.html" class="btn btn-primary">📖 Read the guide</a>
+    <a href="docs/LORE.md" class="btn btn-primary">🧬 Read the briefing</a>
+    <a href="docs/TUTORIAL.md" class="btn btn-secondary">Start the tutorial</a>
     <a href="https://github.com/Habitas-Games/nano-bot-python" class="btn btn-secondary">View on GitHub</a>
   </div>
   <img src="assets/cover.png" alt="Nanobots navigating living tissue" class="hero-img">
+</section>
+
+<!-- ── BRIEFING ──────────────────────────────────────────────────────────── -->
+<section id="briefing">
+  <div class="section-label">The mission</div>
+  <h2>Every rule is something the body is actually doing</h2>
+  <p style="color:var(--muted); max-width:640px">
+    Nothing here is an arbitrary game mechanic. Each one is the patient — or your rival —
+    behaving exactly as they should.
+  </p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon">💊</div>
+      <h3>Carry the dose</h3>
+      <p>AZN breaks down before it reaches deep tissue, so it has to be hauled molecule by
+         molecule to receptor sites and held there by an implant. An empty needle barely
+         treats anything — a fed one does the real work.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🛡️</div>
+      <h3>The body fights you</h3>
+      <p>White blood cells can't tell a nanobot from a bacterium. It isn't malice — it's the
+         patient's own defences working correctly, with your swarm in the way. Route around
+         them, wall them out, or burn them down; they don't come back.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🩸</div>
+      <h3>One-way rivers</h3>
+      <p>Bloodstreams are the fastest roads in the body and they run in exactly one
+         direction. Riding one crosses the map in a fraction of the time — and you can't
+         turn around on it.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">👁️</div>
+      <h3>You can barely see</h3>
+      <p>Your bots sense only what's near them. The rival swarm is out there somewhere and
+         you won't know where until something of yours stops reporting — unless you spend
+         the mass on an Explorer and buy eyes.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">⏱️</div>
+      <h3>1500 turns, 50 milliseconds</h3>
+      <p>That's the treatment window before the compound denatures. And your code gets 50 ms
+         to decide each turn — how long the swarm can wait for orders before the moment has
+         passed. Take longer and the turn is simply gone.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🏁</div>
+      <h3>Only one protocol gets used</h3>
+      <p>Two candidate swarms run in the same simulated body, on the same failing tissue,
+         against the same clock. Whoever holds more of the patient stable when the window
+         closes is the one that goes to a real patient.</p>
+    </div>
+  </div>
+
+  <div class="guide-box" style="margin-top:32px">
+    <div class="guide-icon">🧬</div>
+    <div>
+      <h3>Read the full briefing</h3>
+      <p>The patient, the immune system, the window — and the part nobody tells you at the
+         start: underneath the tissue, this is one of the most useful problems in computer
+         science. Autonomous agents doing the right thing when you aren't there to tell them.</p>
+      <a href="docs/LORE.md" class="btn btn-primary">Open the briefing →</a>
+    </div>
+  </div>
 </section>
 
 <!-- ── FEATURES ──────────────────────────────────────────────────────────── -->

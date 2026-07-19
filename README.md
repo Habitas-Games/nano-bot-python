@@ -43,6 +43,14 @@ from any tool, and it warns before discarding unsaved changes).
 
 ## Writing a strategy
 
+**What is this, really?** A treatment is failing somewhere past the skin.
+The medicine has to be carried molecule by molecule to receptor sites deep
+in living tissue by a swarm too small and too fast to pilot — so you write
+the mind it carries in, and let go. The immune system can't tell your bots
+from an infection, the bloodstream runs one way, and a rival protocol is in
+the same body racing you for the same sites. Full briefing:
+[`docs/LORE.md`](docs/LORE.md).
+
 **New?** Follow [`docs/TUTORIAL.md`](docs/TUTORIAL.md) — four runnable
 stages from "plants one needle" to a strategy that beats an aggressor,
 with the measured score at every step (Stage 1 → 2 is a 43× jump;
