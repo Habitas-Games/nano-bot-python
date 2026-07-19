@@ -43,6 +43,11 @@ from any tool, and it warns before discarding unsaved changes).
 
 ## Writing a strategy
 
+**New?** Follow [`docs/TUTORIAL.md`](docs/TUTORIAL.md) — four runnable
+stages from "plants one needle" to a strategy that beats an aggressor,
+with the measured score at every step (Stage 1 → 2 is a 43× jump;
+Stage 3 goes from 0/24 to 20/24 against `example_combat`).
+
 > **Using an AI assistant (ChatGPT, Claude, Gemini, …) to write your
 > strategy?** Give it [`docs/STRATEGY_API.md`](docs/STRATEGY_API.md) —
 > a single, self-contained, plain-text spec of the entire API with a
@@ -90,6 +95,11 @@ strategy, not a snippet:
   and feeds two Habitas Points to out-score a single-needle turtle,
   deliberately defense-light so an aggressor can punish it (the
   "economy" corner of the strategy rock-paper-scissors).
+- `example_adaptive.py` — **the advanced demo (currently top of the
+  tournament).** Reacts to what it sees rather than running a fixed
+  plan: scouts, defends reactively, clears white cells (nothing else
+  does), expands only when safe, and picks targets by true path cost
+  (its own Dijkstra) instead of straight-line distance.
 
 The demo strategies form a loose **rock-paper-scissors**: aggression
 (`example_combat`) beats the greedy two-needle economy

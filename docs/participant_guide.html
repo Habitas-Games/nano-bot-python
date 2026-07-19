@@ -979,8 +979,16 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
 </div>
 
 <h2>Beyond the walkthrough: one demo per mechanic</h2>
+<div class="callout info">
+  <div class="callout-title">Prefer to build it up yourself?</div>
+  <code>docs/TUTORIAL.md</code> walks you from "plants one needle" to a strategy that
+  beats an aggressor, in four runnable stages with the measured score at each step
+  (Stage 1 → 2 is a 43× scoring jump; Stage 3 takes you from 0/24 to 20/24 against
+  <code>example_combat</code>).
+</div>
+
 <p>
-  <code>strategies/</code> ships six more complete, runnable strategies — each one a
+  <code>strategies/</code> ships seven more complete, runnable strategies — each one a
   focused demo of a mechanic the walkthrough doesn't touch. Read them in this order
   and you'll have seen every bot type and action in real use:
 </p>
@@ -998,9 +1006,34 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
       barely see 2.</li>
   <li><code>example_ip_creator.py</code> — <code>open_ip()</code> opens a forward
       injection point so a far-side collector can bank locally.</li>
-  <li><code>example_full_roster.py</code> — all of the above combined: two claimed
-      points, defense, scouting, a forward base, a relay, and a fighter.</li>
+  <li><code>example_full_roster.py</code> — the <em>greedy economy</em>: claims and
+      feeds <strong>two</strong> Habitas Points to out-score a single fortified
+      needle (double the 20-point base). Deliberately defence-light, so an
+      aggressor can punish its spread — that trade-off is the point.</li>
+  <li><code>example_adaptive.py</code> — <strong>the advanced demo, and the one to
+      study last.</strong> It reacts to what it sees instead of running a fixed plan:
+      scouts with a watchtower Explorer, defends reactively, <em>clears white cells</em>
+      (the only strategy that does — <code>defend()</code> works on hazards and they
+      never respawn), expands to a second point only while unthreatened, and picks
+      targets by <strong>true path cost</strong> (its own Dijkstra) rather than the
+      straight-line guess every other demo uses. It currently tops the tournament.</li>
 </ul>
+
+<p>
+  Those demos also form a <strong>rock-paper-scissors</strong>, measured across full
+  tournaments — there is no single best plan:
+</p>
+<div class="formula" style="font-size:15px">
+  aggression (<span style="color:var(--red)">combat</span>) &nbsp;beats&nbsp;
+  greedy economy (<span style="color:var(--accent)">full_roster</span>) &nbsp;beats&nbsp;
+  turtle defence (<span style="color:var(--accent2)">defense</span>) &nbsp;beats&nbsp;
+  aggression
+</div>
+<p style="font-size:13px;color:var(--muted)">
+  Pick an archetype and cover its weakness. A pure economy with no defence loses to
+  <code>example_combat</code> 0 times out of 24; adding the reactive-defence reflex
+  (<code>nanobot/api/reactive_defense.py</code>) flips that to 20 of 24.
+</p>
 
 <!-- ── 9. TIPS ─────────────────────────────────────────────────────────────── -->
 <h1 id="tips">9 — Strategy tips</h1>
