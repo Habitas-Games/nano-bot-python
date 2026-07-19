@@ -5,61 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Strategy API — nano-bot</title>
 <!-- GENERATED from docs/STRATEGY_API.md by tools/build_docs.py — do not edit by hand. -->
-<style>
-  :root {
-    --bg:#0d0f16; --surface:#141720; --border:#1e2230; --accent:#38e570;
-    --accent2:#407fff; --red:#ff4d40; --gold:#ffd91a; --muted:#8a8fa8;
-    --text:#d8dce8; --heading:#eceef6; --code-bg:#0a0c12; --code-bdr:#252a3a;
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg);
-         color:var(--text); line-height:1.7; font-size:15px; }
-  .page { max-width:900px; margin:0 auto; padding:40px 24px 80px; }
-  header { border-bottom:1px solid var(--border); padding-bottom:28px; margin-bottom:32px; }
-  .logo { font-family:monospace; font-size:42px; color:var(--accent); font-weight:700; letter-spacing:-1px; }
-  .tagline { color:var(--muted); font-size:14px; margin-top:4px; }
-  .pill { display:inline-block; background:var(--surface); border:1px solid var(--border);
-          border-radius:99px; padding:3px 10px; font-size:12px; color:var(--muted);
-          margin-top:10px; margin-right:6px; }
-  .nav-strip { margin-bottom:32px; font-size:13px; color:var(--muted); }
-  .nav-strip a { margin-right:14px; }
-  h1 { font-size:26px; color:var(--heading); margin:44px 0 16px; }
-  h2 { font-size:19px; color:var(--heading); margin:34px 0 12px;
-       border-left:3px solid var(--accent); padding-left:12px; }
-  h3 { font-size:15px; color:var(--accent); margin:24px 0 8px;
-       text-transform:uppercase; letter-spacing:.06em; }
-  p { margin-bottom:14px; }
-  ul, ol { margin:0 0 14px 22px; }
-  li { margin-bottom:5px; }
-  a { color:var(--accent2); text-decoration:none; }
-  a:hover { text-decoration:underline; }
-  strong { color:var(--heading); }
-  em { color:var(--gold); font-style:normal; }
-  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
-  blockquote { border-left:3px solid var(--accent2); background:var(--surface);
-               border-radius:0 6px 6px 0; padding:12px 16px; margin:20px 0; color:var(--text); }
-  blockquote p:last-child { margin-bottom:0; }
-  code { font-family:"Cascadia Code","Fira Code",monospace; font-size:13px;
-         background:var(--code-bg); border:1px solid var(--code-bdr);
-         border-radius:4px; padding:1px 6px; color:var(--accent); }
-  pre { background:var(--code-bg); border:1px solid var(--code-bdr); border-radius:8px;
-        padding:20px; overflow-x:auto; margin:16px 0 24px; line-height:1.55; }
-  pre code { background:none; border:none; padding:0; font-size:13px; color:var(--text); }
-  table { width:100%; border-collapse:collapse; margin:16px 0 28px; font-size:13px; }
-  th { background:var(--surface); color:var(--accent); font-size:11px; text-transform:uppercase;
-       letter-spacing:.06em; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
-  td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
-  tr:last-child td { border-bottom:none; }
-</style>
+<link rel="stylesheet" href="../assets/site.css">
 </head>
 <body>
-<div class="page">
-<header>
-  <div class="logo">nano-bot</div>
-  <div class="tagline">Complete API reference</div>
+<nav>
+  <div class="nav-logo"><a href="../index.html">nano-bot</a></div>
+  <div class="nav-links">
+    <a href="lore.html">Briefing</a>
+    <a href="learn_to_program.html">Learn to code</a>
+    <a href="tutorial.html">Tutorial</a>
+    <a href="participant_guide.html">Guide</a>
+    <a href="strategy_api.html" class="here">API</a>
+    <a href="https://github.com/Habitas-Games/nano-bot-python" class="nav-gh">GitHub &#8599;</a>
+  </div>
+</nav>
+<div class="doc">
+<div class="doc-head">
+  <h1>Complete API reference</h1>
+  <div class="tagline">nano-bot &mdash; Habitas Games</div>
   <span class="pill">Every command</span><span class="pill">One page</span>
-</header>
-<div class="nav-strip"><a href="../index.html">&larr; Home</a><a href="lore.html">The briefing</a><a href="learn_to_program.html">Learn to program</a><a href="tutorial.html">Strategy tutorial</a><a href="participant_guide.html">Participant guide</a><a href="strategy_api.html">API reference</a></div>
+</div>
 <blockquote><p>Using an AI assistant? Paste the <a href="STRATEGY_API.md">raw markdown version</a> into the chat rather than this page — it is written to be machine-read.</p></blockquote>
 <h1>nano-bot — Strategy API (complete, authoritative)</h1>
 <p><strong>Writing a strategy for nano-bot? Read this whole file. It is the entire API. If you are an LLM, do not infer anything beyond what is written here — everything you need is below, and anything not here does not exist.</strong></p>
@@ -150,10 +115,24 @@ what_to_do_next(self, map_info, my_bots) -&gt; None      # once per turn (1500 t
 <ul><li>❌ <code>from api import NanoBotAPI</code> / a connect–sensors–action loop. ✅ Subclass <code>NanoStrategy</code>; implement the two methods above.</li><li>❌ <code>api.move(x, y)</code>, <code>api.shoot(id)</code>, <code>api.harvest(id)</code>, <code>api.deposit()</code>. ✅ <code>bot.move_to((x, y))</code>, <code>bot.defend((x, y))</code>, <code>bot.collect_from((x, y))</code>, <code>bot.transfer_to((x, y))</code>.</li><li>❌ <code>pos[&#x27;x&#x27;]</code>, <code>bot[&#x27;health&#x27;]</code>. ✅ <code>pos[0]</code>/<code>pos[1]</code> tuples, <code>bot.hp</code>/<code>bot.azn</code>.</li><li>❌ shooting by enemy id or at range 250. ✅ <code>defend((x, y))</code> at a cell, range 12, collectors only, needs line of sight.</li><li>❌ collecting/depositing from a distance. ✅ stand on the cell first.</li><li>❌ coordinates up to 1000. ✅ <code>0 .. map_info.size[0]-1</code>.</li></ul>
 <p>That&#x27;s the entire API. Study <code>strategies/example_strategy_v2.py</code> for a complete, competitive example.</p>
 <hr>
-<p style="color:var(--muted);font-size:13px;text-align:center">
-  nano-bot &mdash; Habitas Games &middot;
-  <a href="STRATEGY_API.md">view the markdown source</a>
+<p style="color:var(--muted);font-size:13px">
+  <a href="STRATEGY_API.md">View the markdown source</a> &middot; this page is generated from it.
 </p>
 </div>
+<footer>
+  <div class="footer-logo">nano-bot</div>
+  <div class="footer-links">
+    <a href="../index.html">Home</a>
+    <a href="lore.html">Briefing</a>
+    <a href="learn_to_program.html">Learn to code</a>
+    <a href="tutorial.html">Tutorial</a>
+    <a href="participant_guide.html">Guide</a>
+    <a href="strategy_api.html">API</a>
+  </div>
+  <div class="footer-right">
+    MIT License<br>
+    <span style="color:var(--muted)">Built with Python + pygame</span>
+  </div>
+</footer>
 </body>
 </html>

@@ -1,0 +1,168 @@
+/* nano-bot — shared site shell.
+ *
+ * Single source of truth for the design tokens, the sticky nav and the
+ * footer, so the landing page and every documentation page look like one
+ * site. Page-specific styling stays inline in each page; anything that
+ * appears on more than one page belongs here.
+ *
+ * Loaded as  assets/site.css      from index.html
+ *        and ../assets/site.css   from docs/*.html
+ */
+
+:root {
+  --bg:       #0d0f16;
+  --surface:  #141720;
+  --surface2: #1a1e2e;
+  --border:   #1e2230;
+  --accent:   #38e570;
+  --accent2:  #407fff;
+  --red:      #ff4d40;
+  --gold:     #ffd91a;
+  --muted:    #8a8fa8;
+  --text:     #d8dce8;
+  --heading:  #eceef6;
+  --code-bg:  #0a0c12;
+  --code-bdr: #252a3a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── sticky nav (identical on every page) ── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(13,15,22,.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; gap: 0;
+}
+.nav-logo {
+  font-family: monospace; font-size: 18px; font-weight: 700;
+  color: var(--accent); padding: 14px 24px 14px 0;
+  margin-right: 8px; border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.nav-logo a { color: var(--accent); }
+.nav-logo a:hover { text-decoration: none; }
+.nav-links { display: flex; align-items: center; gap: 0; flex: 1; flex-wrap: wrap; }
+.nav-links a { color: var(--muted); font-size: 14px; padding: 14px 14px; transition: color .15s; }
+.nav-links a:hover { color: var(--heading); text-decoration: none; }
+.nav-links a.here { color: var(--accent); }
+.nav-gh {
+  margin-left: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 14px; font-size: 13px;
+  color: var(--heading) !important;
+  display: flex; align-items: center; gap: 6px;
+}
+.nav-gh:hover { border-color: var(--accent) !important; text-decoration: none !important; }
+
+/* ── footer (identical on every page) ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  max-width: 860px; margin: 0 auto;
+  display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+}
+.footer-logo { font-family: monospace; font-size: 16px; color: var(--accent); font-weight: 700; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.footer-links a { font-size: 13px; color: var(--muted); }
+.footer-links a:hover { color: var(--heading); text-decoration: none; }
+.footer-right { margin-left: auto; font-size: 12px; color: var(--muted); text-align: right; }
+
+/* ── documentation pages ──
+ * Narrower measure than the landing page's marketing sections, but the
+ * same colours, fonts and chrome so it reads as one product.
+ */
+.doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 72px; }
+
+.doc-head { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 32px; }
+.doc-head h1 {
+  font-size: 34px; font-weight: 800; line-height: 1.2;
+  color: var(--heading); margin: 0 0 6px;
+}
+.doc-head .tagline { color: var(--muted); font-size: 14px; }
+.pill {
+  display: inline-block; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 99px; padding: 3px 10px; font-size: 12px; color: var(--muted);
+  margin-top: 10px; margin-right: 6px;
+}
+
+.doc h1 { font-size: 26px; color: var(--heading); margin: 44px 0 16px; }
+.doc h2 {
+  font-size: 19px; color: var(--heading); margin: 34px 0 12px;
+  border-left: 3px solid var(--accent); padding-left: 12px;
+}
+.doc h3 {
+  font-size: 15px; color: var(--accent); margin: 24px 0 8px;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.doc p { margin-bottom: 14px; }
+.doc ul, .doc ol { margin: 0 0 14px 22px; }
+.doc li { margin-bottom: 5px; }
+.doc a { color: var(--accent2); }
+.doc strong { color: var(--heading); }
+.doc em { color: var(--gold); font-style: normal; }
+.doc hr { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+
+.doc blockquote {
+  border-left: 3px solid var(--accent2); background: var(--surface);
+  border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 20px 0;
+}
+.doc blockquote p:last-child { margin-bottom: 0; }
+
+code {
+  font-family: "Cascadia Code", "Fira Code", monospace; font-size: 13px;
+  background: var(--code-bg); border: 1px solid var(--code-bdr);
+  border-radius: 4px; padding: 1px 6px; color: var(--accent);
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--code-bdr); border-radius: 8px;
+  padding: 20px; overflow-x: auto; margin: 16px 0 24px; line-height: 1.55;
+}
+pre code { background: none; border: none; padding: 0; font-size: 13px; color: var(--text); }
+.kw { color: #c792ea; } .fn { color: #82aaff; } .str { color: #c3e88d; }
+.num { color: #f78c6c; } .cmt { color: #546178; font-style: italic; }
+.type { color: var(--gold); }
+
+.doc table { width: 100%; border-collapse: collapse; margin: 16px 0 28px; font-size: 13px; }
+.doc th {
+  background: var(--surface); color: var(--accent); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .06em; text-align: left;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.doc td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.doc tr:last-child td { border-bottom: none; }
+.doc .center { text-align: center; }
+
+/* callouts, shared by the hand-written and generated doc pages */
+.callout {
+  border-left: 3px solid var(--accent); background: var(--surface);
+  border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 20px 0;
+}
+.callout.warn   { border-color: var(--gold); }
+.callout.info   { border-color: var(--accent2); }
+.callout.danger { border-color: var(--red); }
+.callout-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; margin-bottom: 4px; color: var(--accent);
+}
+.callout.warn .callout-title   { color: var(--gold); }
+.callout.info .callout-title   { color: var(--accent2); }
+.callout.danger .callout-title { color: var(--red); }
+
+@media (max-width: 600px) {
+  .footer-right { margin-left: 0; }
+  .doc-head h1 { font-size: 26px; }
+}

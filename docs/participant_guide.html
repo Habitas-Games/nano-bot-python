@@ -4,236 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>nano-bot-python — Participant Guide</title>
+<link rel="stylesheet" href="../assets/site.css">
 <style>
-  :root {
-    --bg:       #0d0f16;
-    --surface:  #141720;
-    --border:   #1e2230;
-    --accent:   #38e570;
-    --accent2:  #407fff;
-    --red:      #ff4d40;
-    --gold:     #ffd91a;
-    --muted:    #8a8fa8;
-    --text:     #d8dce8;
-    --heading:  #eceef6;
-    --code-bg:  #0a0c12;
-    --code-bdr: #252a3a;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: "Segoe UI", system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.7;
-    font-size: 15px;
-  }
-
-  /* ── layout ── */
-  .page { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
-
-  /* ── header ── */
-  header {
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 28px;
-    margin-bottom: 48px;
-  }
-  .logo { font-family: monospace; font-size: 42px; color: var(--accent); font-weight: 700; letter-spacing: -1px; }
-  .tagline { color: var(--muted); font-size: 14px; margin-top: 4px; }
-  .pill {
-    display: inline-block;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 99px;
-    padding: 3px 10px;
-    font-size: 12px;
-    color: var(--muted);
-    margin-top: 10px;
-    margin-right: 6px;
-  }
-
-  /* ── typography ── */
-  h1 { font-size: 26px; color: var(--heading); margin: 48px 0 16px; }
-  h2 { font-size: 19px; color: var(--heading); margin: 36px 0 12px; border-left: 3px solid var(--accent); padding-left: 12px; }
-  h3 { font-size: 15px; color: var(--accent); margin: 24px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
-  p  { margin-bottom: 14px; }
-  ul, ol { margin: 0 0 14px 22px; }
-  li { margin-bottom: 5px; }
-  a  { color: var(--accent2); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  strong { color: var(--heading); }
-  em { color: var(--gold); font-style: normal; }
-
-  /* ── callout boxes ── */
-  .callout {
-    border-left: 3px solid var(--accent);
-    background: var(--surface);
-    border-radius: 0 6px 6px 0;
-    padding: 12px 16px;
-    margin: 20px 0;
-  }
-  .callout.warn  { border-color: var(--gold);  }
-  .callout.info  { border-color: var(--accent2); }
-  .callout.danger{ border-color: var(--red);   }
-  .callout-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; color: var(--accent); }
-  .callout.warn  .callout-title { color: var(--gold); }
-  .callout.info  .callout-title { color: var(--accent2); }
-  .callout.danger .callout-title { color: var(--red); }
-
-  /* ── code ── */
-  code {
-    font-family: "Cascadia Code", "Fira Code", monospace;
-    font-size: 13px;
-    background: var(--code-bg);
-    border: 1px solid var(--code-bdr);
-    border-radius: 4px;
-    padding: 1px 6px;
-    color: var(--accent);
-  }
-  pre {
-    background: var(--code-bg);
-    border: 1px solid var(--code-bdr);
-    border-radius: 8px;
-    padding: 20px;
-    overflow-x: auto;
-    margin: 16px 0 24px;
-    line-height: 1.55;
-  }
-  pre code {
-    background: none; border: none; padding: 0;
-    font-size: 13px; color: var(--text);
-  }
-  /* Syntax colour hints (hand-applied via spans) */
-  .kw  { color: #c792ea; }
-  .fn  { color: #82aaff; }
-  .str { color: #c3e88d; }
-  .num { color: #f78c6c; }
-  .cmt { color: #546178; font-style: italic; }
-  .type{ color: var(--gold); }
-
-  /* ── tables ── */
-  table { width: 100%; border-collapse: collapse; margin: 16px 0 28px; font-size: 13px; }
-  th {
-    background: var(--surface);
-    color: var(--accent);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    text-align: left;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(255,255,255,.03); }
-  .center { text-align: center; }
-  .mono { font-family: monospace; font-size: 12px; color: var(--accent); }
-
-  /* ── bot cards ── */
-  .bot-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 12px;
-    margin: 16px 0 28px;
-  }
-  .bot-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-  }
-  .bot-card h4 { color: var(--accent); font-size: 13px; margin-bottom: 6px; }
-  .bot-card .stat { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
-  .bot-card .stat strong { color: var(--text); }
-
-  /* ── score formula ── */
-  .formula {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px 24px;
-    text-align: center;
-    font-size: 18px;
-    color: var(--heading);
-    margin: 16px 0;
-  }
-  .formula sub { font-size: 11px; color: var(--muted); }
-
-  /* ── toc ── */
-  .toc {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px 24px;
-    margin-bottom: 40px;
-  }
-  .toc h3 { margin-top: 0; }
-  .toc ol { margin-left: 18px; }
-  .toc li { margin-bottom: 4px; font-size: 14px; }
-
-  /* ── step badge ── */
-  .step {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: #000;
-    font-weight: 700;
-    font-size: 12px;
-    margin-right: 8px;
-    flex-shrink: 0;
-  }
-  .step-row { display: flex; align-items: flex-start; margin-bottom: 12px; }
-  .step-row p { margin: 0; }
-
-  /* ── images ── */
-  .hero {
-    width: 100%; border-radius: 10px; margin-bottom: 36px;
-    max-height: 260px; object-fit: cover; object-position: center 55%;
-    border: 1px solid var(--border);
-  }
-  .roster {
-    width: 100%; border-radius: 8px; margin: 16px 0 24px;
-    border: 1px solid var(--border); background: #fff;
-  }
-  .sprite-wrap {
-    display: flex; justify-content: center; align-items: center;
-    background: #1a1e2e; border-radius: 6px; padding: 10px;
-    margin-bottom: 10px;
-  }
-  .sprite-wrap img {
-    image-rendering: pixelated; image-rendering: crisp-edges;
-    width: 64px; height: 64px;
-  }
-  .tile-thumb {
-    image-rendering: pixelated; image-rendering: crisp-edges;
-    width: 32px; height: 32px; vertical-align: middle;
-    border-radius: 3px; border: 1px solid var(--border);
-  }
-  .marker-thumb {
-    image-rendering: pixelated; image-rendering: crisp-edges;
-    width: 28px; height: 28px; vertical-align: middle;
-  }
-  figcaption {
-    text-align: center; font-size: 12px; color: var(--muted); margin-top: 6px;
-  }
+  .toc { background: var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 24px; }
+  .toc h3 { margin-top:0; }
+  .formula { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:18px 22px; margin:18px 0; font-size:17px; text-align:center; }
+  .formula sub { font-size:11px; color:var(--muted); }
+  .bot-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin:24px 0; }
+  .bot-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .bot-card h4 { color:var(--accent); font-size:13px; margin-bottom:6px; }
+  .bot-card .stat { font-size:12px; color:var(--muted); margin-bottom:2px; }
+  .bot-card .stat strong { color:var(--text); }
+  .sprite-wrap { background:var(--surface2,#1a1e2e); border-radius:8px; padding:10px; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:center; }
+  .sprite-wrap img { image-rendering:pixelated; width:48px; height:48px; }
+  .roster { width:100%; border-radius:8px; border:1px solid var(--border); }
+  figure { margin:20px 0; } figcaption { color:var(--muted); font-size:12px; text-align:center; margin-top:8px; }
+  .marker-thumb { vertical-align:middle; margin-right:6px; }
 </style>
 </head>
 <body>
-<div class="page">
-
-<!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
-<header>
-  <div class="logo">nano-bot-python</div>
-  <div class="tagline">Simulation Platform — Participant Guide</div>
-  <span class="pill">Python 3.10+</span>
-  <span class="pill">Turn-based</span>
-  <span class="pill">1 500 turns max</span>
-  <span class="pill">2-player head-to-head</span>
-</header>
+<nav>
+  <div class="nav-logo"><a href="../index.html">nano-bot</a></div>
+  <div class="nav-links">
+    <a href="lore.html">Briefing</a>
+    <a href="learn_to_program.html">Learn to code</a>
+    <a href="tutorial.html">Tutorial</a>
+    <a href="participant_guide.html" class="here">Guide</a>
+    <a href="strategy_api.html">API</a>
+    <a href="https://github.com/Habitas-Games/nano-bot-python" class="nav-gh">GitHub &#8599;</a>
+  </div>
+</nav>
+<div class="doc">
+<div class="doc-head">
+  <h1>Participant Guide</h1>
+  <div class="tagline">nano-bot &mdash; Habitas Games</div>
+  <span class="pill">Python 3.10+</span><span class="pill">1500 turns</span><span class="pill">2-player</span>
+</div>
 
 
 <img src="../assets/cover.png" alt="nano-bot nanobots in tissue" class="hero">
@@ -1167,11 +975,23 @@ threat = <span class="fn">nearest_visible_raider</span>(map_info, needle.positio
   <li>To play it: match window → <em>Map:</em> picker → your file. To verify balance quickly, run it headless from both sides: <code>python run_headless.py --map maps/your_map.json --strategy_a ... --strategy_b ...</code> then swap a/b.</li>
 </ul>
 
-<hr style="border:none;border-top:1px solid var(--border);margin:48px 0 24px">
-<p style="color:var(--muted);font-size:13px;text-align:center">
-  nano-bot-python Simulation Platform &mdash; good luck
-</p>
+
 
 </div>
+<footer>
+  <div class="footer-logo">nano-bot</div>
+  <div class="footer-links">
+    <a href="../index.html">Home</a>
+    <a href="lore.html">Briefing</a>
+    <a href="learn_to_program.html">Learn to code</a>
+    <a href="tutorial.html">Tutorial</a>
+    <a href="participant_guide.html">Guide</a>
+    <a href="strategy_api.html">API</a>
+  </div>
+  <div class="footer-right">
+    MIT License<br>
+    <span style="color:var(--muted)">Built with Python + pygame</span>
+  </div>
+</footer>
 </body>
 </html>

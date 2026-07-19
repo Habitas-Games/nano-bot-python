@@ -42,61 +42,45 @@ PAGES = {
 # links between generated docs get rewritten to their .html counterparts
 LINK_MAP = {md: out for md, (out, *_rest) in PAGES.items()}
 
-STYLE = """
-  :root {
-    --bg:#0d0f16; --surface:#141720; --border:#1e2230; --accent:#38e570;
-    --accent2:#407fff; --red:#ff4d40; --gold:#ffd91a; --muted:#8a8fa8;
-    --text:#d8dce8; --heading:#eceef6; --code-bg:#0a0c12; --code-bdr:#252a3a;
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg);
-         color:var(--text); line-height:1.7; font-size:15px; }
-  .page { max-width:900px; margin:0 auto; padding:40px 24px 80px; }
-  header { border-bottom:1px solid var(--border); padding-bottom:28px; margin-bottom:32px; }
-  .logo { font-family:monospace; font-size:42px; color:var(--accent); font-weight:700; letter-spacing:-1px; }
-  .tagline { color:var(--muted); font-size:14px; margin-top:4px; }
-  .pill { display:inline-block; background:var(--surface); border:1px solid var(--border);
-          border-radius:99px; padding:3px 10px; font-size:12px; color:var(--muted);
-          margin-top:10px; margin-right:6px; }
-  .nav-strip { margin-bottom:32px; font-size:13px; color:var(--muted); }
-  .nav-strip a { margin-right:14px; }
-  h1 { font-size:26px; color:var(--heading); margin:44px 0 16px; }
-  h2 { font-size:19px; color:var(--heading); margin:34px 0 12px;
-       border-left:3px solid var(--accent); padding-left:12px; }
-  h3 { font-size:15px; color:var(--accent); margin:24px 0 8px;
-       text-transform:uppercase; letter-spacing:.06em; }
-  p { margin-bottom:14px; }
-  ul, ol { margin:0 0 14px 22px; }
-  li { margin-bottom:5px; }
-  a { color:var(--accent2); text-decoration:none; }
-  a:hover { text-decoration:underline; }
-  strong { color:var(--heading); }
-  em { color:var(--gold); font-style:normal; }
-  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
-  blockquote { border-left:3px solid var(--accent2); background:var(--surface);
-               border-radius:0 6px 6px 0; padding:12px 16px; margin:20px 0; color:var(--text); }
-  blockquote p:last-child { margin-bottom:0; }
-  code { font-family:"Cascadia Code","Fira Code",monospace; font-size:13px;
-         background:var(--code-bg); border:1px solid var(--code-bdr);
-         border-radius:4px; padding:1px 6px; color:var(--accent); }
-  pre { background:var(--code-bg); border:1px solid var(--code-bdr); border-radius:8px;
-        padding:20px; overflow-x:auto; margin:16px 0 24px; line-height:1.55; }
-  pre code { background:none; border:none; padding:0; font-size:13px; color:var(--text); }
-  table { width:100%; border-collapse:collapse; margin:16px 0 28px; font-size:13px; }
-  th { background:var(--surface); color:var(--accent); font-size:11px; text-transform:uppercase;
-       letter-spacing:.06em; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
-  td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
-  tr:last-child td { border-bottom:none; }
-"""
+STYLE_HREF = "../assets/site.css"   # shared shell: tokens, nav, footer, doc typography
 
-NAV = ('<div class="nav-strip">'
-       '<a href="../index.html">&larr; Home</a>'
-       '<a href="lore.html">The briefing</a>'
-       '<a href="learn_to_program.html">Learn to program</a>'
-       '<a href="tutorial.html">Strategy tutorial</a>'
-       '<a href="participant_guide.html">Participant guide</a>'
-       '<a href="strategy_api.html">API reference</a>'
-       '</div>')
+NAV = """<nav>
+  <div class="nav-logo"><a href="../index.html">nano-bot</a></div>
+  <div class="nav-links">
+    <a href="lore.html"{here_lore}>Briefing</a>
+    <a href="learn_to_program.html"{here_learn}>Learn to code</a>
+    <a href="tutorial.html"{here_tut}>Tutorial</a>
+    <a href="participant_guide.html"{here_guide}>Guide</a>
+    <a href="strategy_api.html"{here_api}>API</a>
+    <a href="https://github.com/Habitas-Games/nano-bot-python" class="nav-gh">GitHub &#8599;</a>
+  </div>
+</nav>"""
+
+FOOTER = """<footer>
+  <div class="footer-logo">nano-bot</div>
+  <div class="footer-links">
+    <a href="../index.html">Home</a>
+    <a href="lore.html">Briefing</a>
+    <a href="learn_to_program.html">Learn to code</a>
+    <a href="tutorial.html">Tutorial</a>
+    <a href="participant_guide.html">Guide</a>
+    <a href="strategy_api.html">API</a>
+  </div>
+  <div class="footer-right">
+    MIT License<br>
+    <span style="color:var(--muted)">Built with Python + pygame</span>
+  </div>
+</footer>"""
+
+
+def nav_for(out_name: str) -> str:
+    keys = {"lore.html": "here_lore", "learn_to_program.html": "here_learn",
+            "tutorial.html": "here_tut", "participant_guide.html": "here_guide",
+            "strategy_api.html": "here_api"}
+    marks = {v: "" for v in keys.values()}
+    if out_name in keys:
+        marks[keys[out_name]] = ' class="here"'
+    return NAV.format(**marks)
 
 
 def _inline(text: str) -> str:
@@ -228,25 +212,25 @@ def render_page(md_name: str) -> tuple[str, str]:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{html.escape(title)}</title>
-<!-- GENERATED from docs/{md_name} by tools/build_docs.py — do not edit by hand. -->
-<style>{STYLE}</style>
+<!-- GENERATED from docs/{md_name} by tools/build_docs.py \u2014 do not edit by hand. -->
+<link rel="stylesheet" href="{STYLE_HREF}">
 </head>
 <body>
-<div class="page">
-<header>
-  <div class="logo">nano-bot</div>
-  <div class="tagline">{html.escape(tagline)}</div>
+{nav_for(out_name)}
+<div class="doc">
+<div class="doc-head">
+  <h1>{html.escape(tagline)}</h1>
+  <div class="tagline">nano-bot &mdash; Habitas Games</div>
   {pill_html}
-</header>
-{NAV}
+</div>
 {note}
 {body}
 <hr>
-<p style="color:var(--muted);font-size:13px;text-align:center">
-  nano-bot &mdash; Habitas Games &middot;
-  <a href="{md_name}">view the markdown source</a>
+<p style="color:var(--muted);font-size:13px">
+  <a href="{md_name}">View the markdown source</a> &middot; this page is generated from it.
 </p>
 </div>
+{FOOTER}
 </body>
 </html>
 """
