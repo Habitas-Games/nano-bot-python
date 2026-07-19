@@ -60,10 +60,17 @@ NAV_ITEMS = [
     ("docs/participant_guide.html", "Guide"),
     ("docs/strategy_api.html",      "API"),
     ("index.html#start",            "Get started"),
+    ("index.html#support",          "Support"),
 ]
 
-# The landing page's own sections live in the footer rather than the nav, so
-# the menu stays the same length everywhere instead of growing on one page.
+# Support stays in the nav on purpose: it has to be findable from any page
+# without scrolling to the footer. Highlighted so it reads as an ask rather
+# than another navigation link.
+NAV_CLASS = {"index.html#support": "nav-support"}
+
+# The landing page's other sections (Features, Bot types, Contribute) live in
+# the footer rather than the nav, so the menu stays the same length everywhere
+# instead of growing on one page.
 FOOTER_ITEMS = NAV_ITEMS[:5] + [
     ("index.html",            "Home"),
     ("index.html#features",   "Features"),
@@ -89,8 +96,9 @@ def nav_for(page: str) -> str:
     home = _href("index.html", in_docs)
     links = []
     for target, label in NAV_ITEMS:
-        here = ' class="here"' if target == page else ""
-        links.append(f'    <a href="{_href(target, in_docs)}"{here}>{label}</a>')
+        classes = [c for c in (NAV_CLASS.get(target), "here" if target == page else None) if c]
+        attr = f' class="{" ".join(classes)}"' if classes else ""
+        links.append(f'    <a href="{_href(target, in_docs)}"{attr}>{label}</a>')
     return ("<nav>\n"
             f'  <div class="nav-logo"><a href="{home}">{BRAND}</a></div>\n'
             '  <div class="nav-links">\n'

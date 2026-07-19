@@ -59,6 +59,11 @@ nav {
 .nav-links a { color: var(--muted); font-size: 14px; padding: 14px 14px; transition: color .15s; }
 .nav-links a:hover { color: var(--heading); text-decoration: none; }
 .nav-links a.here { color: var(--accent); }
+/* Support sits in the nav so it's reachable from any page without scrolling
+   to the footer. Tinted, not shouting — it should read as an ask. */
+.nav-links a.nav-support { color: var(--gold); }
+.nav-links a.nav-support::before { content: "\2665\00a0"; }
+.nav-links a.nav-support:hover { color: var(--gold); text-decoration: underline; }
 .nav-gh {
   margin-left: auto;
   background: var(--surface); border: 1px solid var(--border);
