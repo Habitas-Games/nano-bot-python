@@ -44,43 +44,75 @@ LINK_MAP = {md: out for md, (out, *_rest) in PAGES.items()}
 
 STYLE_HREF = "../assets/site.css"   # shared shell: tokens, nav, footer, doc typography
 
-NAV = """<nav>
-  <div class="nav-logo"><a href="../index.html">nano-bot</a></div>
-  <div class="nav-links">
-    <a href="lore.html"{here_lore}>Briefing</a>
-    <a href="learn_to_program.html"{here_learn}>Learn to code</a>
-    <a href="tutorial.html"{here_tut}>Tutorial</a>
-    <a href="participant_guide.html"{here_guide}>Guide</a>
-    <a href="strategy_api.html"{here_api}>API</a>
-    <a href="https://github.com/Habitas-Games/nano-bot-python" class="nav-gh">GitHub &#8599;</a>
-  </div>
-</nav>"""
+# The product name shown to readers. The GitHub repository is still called
+# nano-bot-python, so REPO_URL and any clone command keep that name — only
+# the branding says "nano-bot".
+BRAND = "nano-bot"
+REPO_URL = "https://github.com/Habitas-Games/nano-bot-python"
 
-FOOTER = """<footer>
-  <div class="footer-logo">nano-bot</div>
-  <div class="footer-links">
-    <a href="../index.html">Home</a>
-    <a href="lore.html">Briefing</a>
-    <a href="learn_to_program.html">Learn to code</a>
-    <a href="tutorial.html">Tutorial</a>
-    <a href="participant_guide.html">Guide</a>
-    <a href="strategy_api.html">API</a>
-  </div>
-  <div class="footer-right">
-    MIT License<br>
-    <span style="color:var(--muted)">Built with Python + pygame</span>
-  </div>
-</footer>"""
+# The menu, defined once for the whole site. Targets are written as if from
+# the repository root; _href() rewrites them per page. Every page gets this
+# exact list, in this order — that is the point.
+NAV_ITEMS = [
+    ("docs/lore.html",              "Briefing"),
+    ("docs/learn_to_program.html",  "Learn to code"),
+    ("docs/tutorial.html",          "Tutorial"),
+    ("docs/participant_guide.html", "Guide"),
+    ("docs/strategy_api.html",      "API"),
+    ("index.html#start",            "Get started"),
+]
+
+# The landing page's own sections live in the footer rather than the nav, so
+# the menu stays the same length everywhere instead of growing on one page.
+FOOTER_ITEMS = NAV_ITEMS[:5] + [
+    ("index.html",            "Home"),
+    ("index.html#features",   "Features"),
+    ("index.html#bots",       "Bot types"),
+    ("index.html#contribute", "Contribute"),
+    ("index.html#support",    "Support"),
+]
 
 
-def nav_for(out_name: str) -> str:
-    keys = {"lore.html": "here_lore", "learn_to_program.html": "here_learn",
-            "tutorial.html": "here_tut", "participant_guide.html": "here_guide",
-            "strategy_api.html": "here_api"}
-    marks = {v: "" for v in keys.values()}
-    if out_name in keys:
-        marks[keys[out_name]] = ' class="here"'
-    return NAV.format(**marks)
+def _href(target: str, in_docs: bool) -> str:
+    """Rewrite a root-relative target for the page that will contain it."""
+    if target.startswith("index.html"):
+        anchor = target[len("index.html"):]
+        if in_docs:
+            return "../index.html" + anchor
+        return anchor or "index.html"          # on the landing page: just the anchor
+    return target[len("docs/"):] if in_docs else target
+
+
+def nav_for(page: str) -> str:
+    """`page` is the page's path from the repo root, e.g. 'docs/lore.html'."""
+    in_docs = page.startswith("docs/")
+    home = _href("index.html", in_docs)
+    links = []
+    for target, label in NAV_ITEMS:
+        here = ' class="here"' if target == page else ""
+        links.append(f'    <a href="{_href(target, in_docs)}"{here}>{label}</a>')
+    return ("<nav>\n"
+            f'  <div class="nav-logo"><a href="{home}">{BRAND}</a></div>\n'
+            '  <div class="nav-links">\n'
+            + "\n".join(links) + "\n"
+            f'    <a href="{REPO_URL}" class="nav-gh">GitHub &#8599;</a>\n'
+            "  </div>\n"
+            "</nav>")
+
+
+def footer_for(page: str) -> str:
+    in_docs = page.startswith("docs/")
+    links = [f'    <a href="{_href(t, in_docs)}">{label}</a>' for t, label in FOOTER_ITEMS]
+    return ("<footer>\n"
+            f'  <div class="footer-logo">{BRAND}</div>\n'
+            '  <div class="footer-links">\n'
+            + "\n".join(links) + "\n"
+            "  </div>\n"
+            '  <div class="footer-right">\n'
+            "    MIT License<br>\n"
+            '    <span style="color:var(--muted)">Built with Python + pygame</span>\n'
+            "  </div>\n"
+            "</footer>")
 
 
 def _inline(text: str) -> str:
@@ -216,11 +248,11 @@ def render_page(md_name: str) -> tuple[str, str]:
 <link rel="stylesheet" href="{STYLE_HREF}">
 </head>
 <body>
-{nav_for(out_name)}
+{nav_for("docs/" + out_name)}
 <div class="doc">
 <div class="doc-head">
   <h1>{html.escape(tagline)}</h1>
-  <div class="tagline">nano-bot &mdash; Habitas Games</div>
+  <div class="tagline">{BRAND} &mdash; Habitas Games</div>
   {pill_html}
 </div>
 {note}
@@ -230,11 +262,26 @@ def render_page(md_name: str) -> tuple[str, str]:
   <a href="{md_name}">View the markdown source</a> &middot; this page is generated from it.
 </p>
 </div>
-{FOOTER}
+{footer_for("docs/" + out_name)}
 </body>
 </html>
 """
     return out_name, page
+
+
+# Hand-written pages: only their <nav> and <footer> are managed here, so the
+# menu can't drift between the landing page and the documentation. Everything
+# else in these files is edited by hand as usual.
+SHELL_PAGES = ["index.html", "docs/participant_guide.html", "docs/learn_to_program.html"]
+
+
+def apply_shell(page: str, text: str) -> str:
+    """Replace the nav and footer blocks of a hand-written page."""
+    new = re.sub(r"<nav>.*?</nav>", lambda _: nav_for(page), text, count=1, flags=re.S)
+    new = re.sub(r"<footer>.*?</footer>", lambda _: footer_for(page), new, count=1, flags=re.S)
+    if "<nav>" not in text or "<footer>" not in text:
+        raise SystemExit(f"{page}: expected a <nav> and a <footer> to keep in sync")
+    return new
 
 
 def main() -> int:
@@ -252,6 +299,20 @@ def main() -> int:
             print(f"wrote docs/{out_name}")
         else:
             print(f"docs/{out_name} up to date")
+
+    for page in SHELL_PAGES:
+        path = os.path.join(ROOT, page)
+        existing = open(path, encoding="utf-8").read()
+        updated = apply_shell(page, existing)
+        if check:
+            if existing != updated:
+                stale.append(page + " (nav/footer)")
+        elif existing != updated:
+            open(path, "w", encoding="utf-8").write(updated)
+            print(f"synced shell in {page}")
+        else:
+            print(f"{page} shell up to date")
+
     if check and stale:
         print("STALE (re-run tools/build_docs.py): " + ", ".join(stale))
         return 1

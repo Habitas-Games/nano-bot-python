@@ -1,6 +1,8 @@
-# nano-bot-python
+# nano-bot
 
-A turn-based AI programming competition set inside a simulated human body —
+A turn-based AI programming competition set inside a simulated human body.
+
+This repository is named `nano-bot-python` because it is the
 **Python + pygame port** of the [nano-bot](../nano-bot) Godot project, for
 the same reasons documented in that project's
 `docs/versioning/v0.0.3/analysis.md`: Godot/GDScript introduced friction
@@ -182,7 +184,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-362 unit tests cover the core simulation engine and map-editor logic
+367 unit tests cover the core simulation engine and map-editor logic
 (`tests/test_*.py`). The pygame rendering/input layers (renderer, playback
 viewer, tool event handling, main menu threading) don't have unit tests
 yet — those were verified via scripted integration checks driving real
